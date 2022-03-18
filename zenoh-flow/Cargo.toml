@@ -20,6 +20,7 @@ async-lock = "2.4.0"
 async-trait = "0.1.50"
 base64 = "0.13.0"
 bincode = { version = "1.3"}
+byteorder = {version = "1.4", optional = true}
 derive_more = "0.99.10"
 clap = { version = "3.1", features = ["derive"] }
 const_format = "0.2.22"
@@ -45,12 +46,17 @@ uhlc = "0.4"
 url = "2.2.2"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 zenoh = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master"}
+zenoh-buffers = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master", optional = true }
 zenoh-flow-derive = {path = "../zenoh-flow-derive"}
 zenoh-sync = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master" }
 zenoh-util = { git = "https://github.com/eclipse-zenoh/zenoh.git", branch = "master" }
 znrpc-macros = { git = "https://github.com/atolab/zenoh-rpc.git", branch = "master" }
 zrpc = { git = "https://github.com/atolab/zenoh-rpc.git", branch = "master" }
 
+
+
+[dev-dependencies]
+criterion = "0.3.4"
 
 [build-dependencies]
 rustc_version = "0.4.0"
@@ -59,6 +65,8 @@ rustc_version = "0.4.0"
 data_bincode = []
 data_json = ["serde_json"]
 data_cbor = ["serde_cbor"]
+custom_serde = ["byteorder", "zenoh-buffers"]
+
 
 debug = ["data_json"]
-default = ["debug"]
+default = ["debug", "custom_serde"]

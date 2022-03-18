@@ -44,6 +44,9 @@ pub mod message;
 pub mod resources;
 pub mod token;
 
+#[cfg(feature = "custom_serde")]
+pub mod message_new;
+
 /// The context of a Zenoh Flow runtime.
 /// This is shared across all the instances in a runtime.
 /// It allows sharing the `zenoh::Session`, the `Loader`,
