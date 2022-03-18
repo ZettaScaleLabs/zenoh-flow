@@ -70,3 +70,12 @@ custom_serde = ["byteorder", "zenoh-buffers"]
 
 debug = ["data_json"]
 default = ["debug", "custom_serde"]
+
+
+[[bench]]
+name = "serialization_bench"
+harness = false
+
+[[bench]]
+name = "serialization_bench_empty"
+harness = false
