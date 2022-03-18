@@ -13,7 +13,6 @@
 //
 #[macro_use]
 extern crate criterion;
-use byteorder::WriteBytesExt;
 use criterion::{black_box, Criterion};
 use std::time::Duration;
 use zenoh::net::protocol::io::*;
