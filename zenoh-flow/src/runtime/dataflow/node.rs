@@ -52,7 +52,11 @@ impl SourceLoaded {
         lib: Option<Arc<Library>>,
         source: Arc<dyn Source>,
     ) -> ZFResult<Self> {
+        log::trace!("Initializing source {}", record.id);
+
         let state = source.initialize(&record.configuration)?;
+
+        log::trace!("Source {} initialized", record.id);
 
         Ok(Self {
             id: record.id,
@@ -94,7 +98,11 @@ impl OperatorLoaded {
         lib: Option<Arc<Library>>,
         operator: Arc<dyn Operator>,
     ) -> ZFResult<Self> {
+        log::trace!("Initializing operator {}", record.id);
+
         let state = operator.initialize(&record.configuration)?;
+
+        log::trace!("Operator {} initialized", record.id);
 
         let inputs: HashMap<PortId, PortType> = record
             .inputs
@@ -147,7 +155,11 @@ impl SinkLoaded {
         lib: Option<Arc<Library>>,
         sink: Arc<dyn Sink>,
     ) -> ZFResult<Self> {
+        log::trace!("Initializing sink {}", record.id);
+
         let state = sink.initialize(&record.configuration)?;
+
+        log::trace!("Sink {} initialized", record.id);
 
         Ok(Self {
             id: record.id,

@@ -354,10 +354,10 @@ impl Loader {
         log::debug!("Operator Loading {:#?}", path);
 
         #[cfg(target_family = "unix")]
-        let library = Library::open(Some(path), LOAD_FLAGS)?;
+        let library = Library::open(Some(path.clone()), LOAD_FLAGS)?;
 
         #[cfg(target_family = "windows")]
-        let library = Library::new(path)?;
+        let library = Library::new(path.clone())?;
 
         let decl = library
             .get::<*mut OperatorDeclaration>(b"zfoperator_declaration\0")?
@@ -367,6 +367,8 @@ impl Loader {
         if decl.rustc_version != RUSTC_VERSION || decl.core_version != CORE_VERSION {
             return Err(ZFError::VersionMismatch);
         }
+
+        log::trace!("Loaded operator: {:#?}", path);
 
         Ok((library, (decl.register)()?))
     }
@@ -383,10 +385,10 @@ impl Loader {
         log::debug!("Source Loading {:#?}", path);
 
         #[cfg(target_family = "unix")]
-        let library = Library::open(Some(path), LOAD_FLAGS)?;
+        let library = Library::open(Some(path.clone()), LOAD_FLAGS)?;
 
         #[cfg(target_family = "windows")]
-        let library = Library::new(path)?;
+        let library = Library::new(path.clone())?;
 
         let decl = library
             .get::<*mut SourceDeclaration>(b"zfsource_declaration\0")?
@@ -396,6 +398,8 @@ impl Loader {
         if decl.rustc_version != RUSTC_VERSION || decl.core_version != CORE_VERSION {
             return Err(ZFError::VersionMismatch);
         }
+
+        log::trace!("Loaded source: {:#?}", path);
 
         Ok((library, (decl.register)()?))
     }
@@ -413,10 +417,10 @@ impl Loader {
         log::debug!("Sink Loading {:#?}", path);
 
         #[cfg(target_family = "unix")]
-        let library = Library::open(Some(path), LOAD_FLAGS)?;
+        let library = Library::open(Some(path.clone()), LOAD_FLAGS)?;
 
         #[cfg(target_family = "windows")]
-        let library = Library::new(path)?;
+        let library = Library::new(path.clone())?;
 
         let decl = library
             .get::<*mut SinkDeclaration>(b"zfsink_declaration\0")?
@@ -426,6 +430,8 @@ impl Loader {
         if decl.rustc_version != RUSTC_VERSION || decl.core_version != CORE_VERSION {
             return Err(ZFError::VersionMismatch);
         }
+
+        log::trace!("Loaded sink: {:#?}", path.clone());
 
         Ok((library, (decl.register)()?))
     }
