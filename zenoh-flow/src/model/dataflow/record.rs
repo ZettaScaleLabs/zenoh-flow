@@ -21,7 +21,7 @@ use crate::model::{InputDescriptor, OutputDescriptor};
 use crate::serde::{Deserialize, Serialize};
 use crate::types::{RuntimeId, ZFError, ZFResult};
 use crate::{merge_configurations, NodeId, PortType};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 use uuid::Uuid;
@@ -118,14 +118,8 @@ impl DataFlowRecord {
     ///
     ///  # Errors
     /// A variant error is returned if validation fails.
-    fn add_links(
-        &mut self,
-        links: &[LinkDescriptor],
-        nodes_to_remove: &HashSet<NodeId>,
-    ) -> ZFResult<()> {
-        for l in links.iter().filter(|&l| {
-            !nodes_to_remove.contains(&l.from.node) && !nodes_to_remove.contains(&l.to.node)
-        }) {
+    fn add_links(&mut self, links: &[LinkDescriptor]) -> ZFResult<()> {
+        for l in links {
             log::debug!("Adding link: {:?}…", l);
             let from_runtime = match self.find_node_runtime(&l.from.node) {
                 Some(rt) => rt,
@@ -285,16 +279,9 @@ impl TryFrom<(DataFlowDescriptor, Uuid)> for DataFlowRecord {
             deadlines,
             loops,
             global_configuration,
-            flags,
         } = dataflow;
 
         let mapping = mapping.map_or(HashMap::new(), |m| m);
-
-        let nodes_to_remove = if let Some(flags) = flags {
-            super::flag::get_nodes_to_remove(&flags)
-        } else {
-            HashSet::new()
-        };
 
         let deadlines = deadlines
             .map(|deadlines_desc| deadlines_desc.into_iter().map(|desc| desc.into()).collect());
@@ -310,10 +297,7 @@ impl TryFrom<(DataFlowDescriptor, Uuid)> for DataFlowRecord {
             end_to_end_deadlines: deadlines,
         };
 
-        for o in operators
-            .into_iter()
-            .filter(|o| !nodes_to_remove.contains(&o.id))
-        {
+        for o in operators {
             let or = OperatorRecord {
                 id: o.id.clone(),
                 inputs: o.inputs,
@@ -330,10 +314,7 @@ impl TryFrom<(DataFlowDescriptor, Uuid)> for DataFlowRecord {
             dfr.operators.insert(o.id, or);
         }
 
-        for s in sources
-            .into_iter()
-            .filter(|s| !nodes_to_remove.contains(&s.id))
-        {
+        for s in sources {
             let sr = SourceRecord {
                 id: s.id.clone(),
                 period: s.period,
@@ -348,10 +329,7 @@ impl TryFrom<(DataFlowDescriptor, Uuid)> for DataFlowRecord {
             dfr.sources.insert(s.id, sr);
         }
 
-        for s in sinks
-            .into_iter()
-            .filter(|s| !nodes_to_remove.contains(&s.id))
-        {
+        for s in sinks {
             let sr = SinkRecord {
                 id: s.id.clone(),
                 input: s.input,
@@ -414,7 +392,7 @@ impl TryFrom<(DataFlowDescriptor, Uuid)> for DataFlowRecord {
             }
         }
 
-        dfr.add_links(&links, &nodes_to_remove)?;
+        dfr.add_links(&links)?;
 
         Ok(dfr)
     }
