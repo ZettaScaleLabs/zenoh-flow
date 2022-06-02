@@ -281,14 +281,6 @@ impl NodeRunner {
 
     /// Starts the node, returning the `RunnerManager` to stop it.
     pub fn start(&self) -> RunnerManager {
-        // Using barrier to wait for the stop notification.
-        // A Barrier(N) block N-1 futures that call the wait().
-        // In this case the future we want to block is the one defined in
-        // line 244. That future will block when calling the wait().
-        // When the next future, the one defined in line 86, calls the wait()
-        // both gets unlocked and continue execution, winning the race
-        // in line 258 and stop the execution.
-        // This is why this is a Barrier(2).
         let (tx, rx) = flume::bounded::<bool>(1);
 
         let cloned_self = self.clone();
