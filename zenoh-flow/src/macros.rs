@@ -211,33 +211,33 @@ macro_rules! zf_spin_lock {
     };
 }
 
-/// This macro is a helper if your node does not need any state.
-/// It can be used inside your implementation of `Node::intialize`
-///
-/// Example:
-///
-/// ```no_run
-/// use zenoh_flow::{zf_empty_state, Node, ZFResult, State, Configuration};
-///
-/// struct MyOp;
-///
-///
-///  impl Node for MyOp {
-///     fn initialize(&self, _configuration: &Option<Configuration>) -> ZFResult<State> {
-///         zf_empty_state!()
-///     }
-///
-///     fn finalize(&self, _state: &mut State) -> ZFResult<()> {
-///         Ok(())
-///     }
-///  }
-///
-/// ```
-#[macro_export]
-macro_rules! zf_empty_state {
-    () => {
-        Ok(zenoh_flow::State::from::<zenoh_flow::EmptyState>(
-            zenoh_flow::EmptyState {},
-        ))
-    };
-}
+// /// This macro is a helper if your node does not need any state.
+// /// It can be used inside your implementation of `Node::intialize`
+// ///
+// /// Example:
+// ///
+// /// ```no_run
+// /// use zenoh_flow::{zf_empty_state, Node, ZFResult, State, Configuration};
+// ///
+// /// struct MyOp;
+// ///
+// ///
+// ///  impl Node for MyOp {
+// ///     fn initialize(&self, _configuration: &Option<Configuration>) -> ZFResult<State> {
+// ///         zf_empty_state!()
+// ///     }
+// ///
+// ///     fn finalize(&self, _state: &mut State) -> ZFResult<()> {
+// ///         Ok(())
+// ///     }
+// ///  }
+// ///
+// /// ```
+// #[macro_export]
+// macro_rules! zf_empty_state {
+//     () => {
+//         Ok(zenoh_flow::State::from::<zenoh_flow::EmptyState>(
+//             zenoh_flow::EmptyState {},
+//         ))
+//     };
+// }

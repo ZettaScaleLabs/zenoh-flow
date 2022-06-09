@@ -24,7 +24,7 @@ use crate::runtime::dataflow::node::SinkLoaded;
 use crate::runtime::message::Message;
 use crate::runtime::InstanceContext;
 use crate::types::ZFResult;
-use crate::{Context, NodeId, PortId, PortType, Sink, State, ZFError};
+use crate::{Context, NodeId, PortId, PortType, Sink, ZFError};
 use async_trait::async_trait;
 
 #[cfg(target_family = "unix")]
@@ -48,7 +48,7 @@ pub struct SinkRunner {
     pub(crate) link: Arc<Mutex<Option<LinkReceiver<Message>>>>,
     pub(crate) _end_to_end_deadlines: Vec<E2EDeadlineRecord>, //FIXME
     pub(crate) is_running: Arc<Mutex<bool>>,
-    pub(crate) state: Arc<Mutex<State>>,
+    // pub(crate) state: Arc<Mutex<State>>,
     pub(crate) sink: Arc<dyn Sink>,
     pub(crate) _library: Option<Arc<Library>>,
 }
@@ -77,7 +77,7 @@ impl SinkRunner {
             link: Arc::new(Mutex::new(Some(link))),
             _end_to_end_deadlines: sink.end_to_end_deadlines,
             is_running: Arc::new(Mutex::new(false)),
-            state: sink.state,
+            // state: sink.state,
             sink: sink.sink,
             _library: sink.library,
         })
@@ -95,47 +95,47 @@ impl SinkRunner {
     /// -  user returns an error
     /// - link recv fails
     ///
-    async fn iteration(&self, mut context: Context) -> ZFResult<Context> {
-        // Guards are taken at the beginning of each iteration to allow interleaving.
-        if let Some(link) = &*self.link.lock().await {
-            let mut state = self.state.lock().await;
+    async fn iteration(&self, context: Context) -> ZFResult<Context> {
+        // // Guards are taken at the beginning of each iteration to allow interleaving.
+        // if let Some(link) = &*self.link.lock().await {
+        //     let mut state = self.state.lock().await;
 
-            let (port_id, message) = link.recv().await?;
-            let input = match message.as_ref() {
-                Message::Data(data_message) => {
-                    if let Err(error) = self
-                        .context
-                        .runtime
-                        .hlc
-                        .update_with_timestamp(&data_message.timestamp)
-                    {
-                        log::error!(
-                            "[Sink: {}][HLC] Could not update HLC with timestamp {:?}: {:?}",
-                            self.id,
-                            data_message.timestamp,
-                            error
-                        );
-                    }
-                    let now = self.context.runtime.hlc.new_timestamp();
-                    let mut input = data_message.clone();
+        //     let (port_id, message) = link.recv().await?;
+        //     let input = match message.as_ref() {
+        //         Message::Data(data_message) => {
+        //             if let Err(error) = self
+        //                 .context
+        //                 .runtime
+        //                 .hlc
+        //                 .update_with_timestamp(&data_message.timestamp)
+        //             {
+        //                 log::error!(
+        //                     "[Sink: {}][HLC] Could not update HLC with timestamp {:?}: {:?}",
+        //                     self.id,
+        //                     data_message.timestamp,
+        //                     error
+        //                 );
+        //             }
+        //             let now = self.context.runtime.hlc.new_timestamp();
+        //             let mut input = data_message.clone();
 
-                    data_message
-                        .end_to_end_deadlines
-                        .iter()
-                        .for_each(|e2e_deadline| {
-                            if let Some(miss) = e2e_deadline.check(&self.id, &port_id, &now) {
-                                input.missed_end_to_end_deadlines.push(miss);
-                            }
-                        });
+        //             data_message
+        //                 .end_to_end_deadlines
+        //                 .iter()
+        //                 .for_each(|e2e_deadline| {
+        //                     if let Some(miss) = e2e_deadline.check(&self.id, &port_id, &now) {
+        //                         input.missed_end_to_end_deadlines.push(miss);
+        //                     }
+        //                 });
 
-                    input
-                }
+        //             input
+        //         }
 
-                Message::Control(_) => return Err(ZFError::Unimplemented),
-            };
+        //         Message::Control(_) => return Err(ZFError::Unimplemented),
+        //     };
 
-            self.sink.run(&mut context, &mut state, input).await?;
-        }
+        //     self.sink.run(&mut context, &mut state, input).await?;
+        // }
         Ok(context)
     }
 }
@@ -157,10 +157,10 @@ impl Runner for SinkRunner {
         Err(ZFError::SinkDoNotHaveOutputs)
     }
 
-    async fn clean(&self) -> ZFResult<()> {
-        let mut state = self.state.lock().await;
-        self.sink.finalize(&mut state)
-    }
+    // async fn clean(&self) -> ZFResult<()> {
+    //     let mut state = self.state.lock().await;
+    //     self.sink.finalize(&mut state)
+    // }
 
     fn get_inputs(&self) -> HashMap<PortId, PortType> {
         let mut inputs = HashMap::with_capacity(1);
@@ -243,6 +243,6 @@ impl Runner for SinkRunner {
     }
 }
 
-#[cfg(test)]
-#[path = "./tests/sink_e2e_deadline_tests.rs"]
-mod e2e_deadline_tests;
+// #[cfg(test)]
+// #[path = "./tests/sink_e2e_deadline_tests.rs"]
+// mod e2e_deadline_tests;

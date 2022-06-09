@@ -13,10 +13,12 @@
 //
 
 use crate::async_std::sync::Arc;
+use crate::runtime::dataflow::instance::link::{LinkReceiver, LinkSender};
 use crate::serde::{Deserialize, Serialize};
-use crate::{ControlMessage, DataMessage, InputToken, ZFData, ZFState};
+use crate::{ControlMessage, Message, ZFData};
 use std::collections::HashMap;
 use std::time::Duration;
+
 /// A NodeId identifies a node inside a Zenoh Flow graph
 pub type NodeId = Arc<str>;
 /// A PortId identifies a port within an node.
@@ -27,7 +29,6 @@ pub type RuntimeId = Arc<str>;
 pub type FlowId = Arc<str>;
 /// The PortType identifies the type of the data expected in a port.
 pub type PortType = Arc<str>;
-
 /// The Zenoh Flow result type.
 pub type ZFResult<T> = Result<T, ZFError>;
 
@@ -144,49 +145,49 @@ impl Data {
     }
 }
 
-/// This structs stores a node state in the heap.
-pub struct State {
-    state: Box<dyn ZFState>,
-}
+// /// This structs stores a node state in the heap.
+// pub struct State {
+//     state: Box<dyn ZFState>,
+// }
 
-impl State {
-    /// Creates a new `State`, from an already boxed state.
-    /// The state has to be an instance of [`ZFState`]`ZFState`
-    pub fn from_box<S>(boxed: Box<S>) -> Self
-    where
-        S: ZFState + 'static,
-    {
-        Self { state: boxed }
-    }
+// impl State {
+//     /// Creates a new `State`, from an already boxed state.
+//     /// The state has to be an instance of [`ZFState`]`ZFState`
+//     pub fn from_box<S>(boxed: Box<S>) -> Self
+//     where
+//         S: ZFState + 'static,
+//     {
+//         Self { state: boxed }
+//     }
 
-    /// Creates a new `State` from the provided state.
-    /// The state has to be an instance of [`ZFState`]`ZFState`
-    pub fn from<S>(state: S) -> Self
-    where
-        S: ZFState + 'static,
-    {
-        Self {
-            state: Box::new(state),
-        }
-    }
+//     /// Creates a new `State` from the provided state.
+//     /// The state has to be an instance of [`ZFState`]`ZFState`
+//     pub fn from<S>(state: S) -> Self
+//     where
+//         S: ZFState + 'static,
+//     {
+//         Self {
+//             state: Box::new(state),
+//         }
+//     }
 
-    /// Tries to cast the state to the given type.
-    /// It returns a mutable reference to the internal state, so user can
-    /// modify it.
-    ///
-    /// # Errors
-    /// If it fails to cast an error
-    /// variant will be returned.
-    pub fn try_get<S>(&mut self) -> ZFResult<&mut S>
-    where
-        S: ZFState + 'static,
-    {
-        self.state
-            .as_mut_any()
-            .downcast_mut::<S>()
-            .ok_or_else(|| ZFError::InvalidData("Could not downcast.".to_string()))
-    }
-}
+//     /// Tries to cast the state to the given type.
+//     /// It returns a mutable reference to the internal state, so user can
+//     /// modify it.
+//     ///
+//     /// # Errors
+//     /// If it fails to cast an error
+//     /// variant will be returned.
+//     pub fn try_get<S>(&mut self) -> ZFResult<&mut S>
+//     where
+//         S: ZFState + 'static,
+//     {
+//         self.state
+//             .as_mut_any()
+//             .downcast_mut::<S>()
+//             .ok_or_else(|| ZFError::InvalidData("Could not downcast.".to_string()))
+//     }
+// }
 
 /// Represents the output of a node.
 /// A node can either send `Data` or `Control`
@@ -203,97 +204,129 @@ pub enum NodeOutput {
     Control(ControlMessage),
 }
 
-/// The inputs provided to operator's run function.
-/// Inputs are indexed by [`PortId`](`PortId`)
-/// *NOTE:* Not yet used.
-/// It will be used instead of the `HashMap<PortId,DataMessage>` in
-/// `Operator::run` function.
-#[derive(Debug, Clone)]
-pub struct Inputs(HashMap<PortId, DataMessage>);
-
-impl Default for Inputs {
-    fn default() -> Self {
-        Self::new()
-    }
+pub struct Inputs {
+    pub(crate) hmap: HashMap<PortId, LinkReceiver<Message>>,
 }
 
 impl Inputs {
-    /// Creates an empty set of `Inputs`.
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    /// Inserts the given `data` with the given `id`.
-    pub fn insert(&mut self, id: PortId, data: DataMessage) -> Option<DataMessage> {
-        self.0.insert(id, data)
-    }
-
-    /// Gets a reference to the data identified by the `id`.
-    pub fn get(&self, id: &PortId) -> Option<&DataMessage> {
-        self.0.get(id)
-    }
-    /// Gets a mutable reference to the data idenfitied by the `id`.
-    pub fn get_mut(&mut self, id: &PortId) -> Option<&mut DataMessage> {
-        self.0.get_mut(id)
-    }
-}
-
-impl<'a> IntoIterator for &'a Inputs {
-    type Item = (&'a PortId, &'a DataMessage);
-    type IntoIter = std::collections::hash_map::Iter<'a, PortId, DataMessage>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
-
-/// The empty state is a commodity struct provided to user that do not
-/// need any state for they operators.
-#[derive(Debug, Clone)]
-pub struct EmptyState;
-
-impl ZFState for EmptyState {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-}
-
-/// Commodity function for users that do not need output
-/// rules in their operators.
-/// The data is simply converted to the
-/// expected [`NodeOutput`](`NodeOutput`) type.
-pub fn default_output_rule(
-    _state: &mut State,
-    outputs: HashMap<PortId, Data>,
-) -> ZFResult<HashMap<PortId, NodeOutput>> {
-    let mut results = HashMap::with_capacity(outputs.len());
-    for (k, v) in outputs {
-        results.insert(k, NodeOutput::Data(v));
-    }
-
-    Ok(results)
-}
-
-/// Commodity function for users that need their operators to behave
-/// in a KPN manner:
-/// all inputs must be present before a computation can be triggered.
-pub fn default_input_rule(
-    _state: &mut State,
-    tokens: &mut HashMap<PortId, InputToken>,
-) -> ZFResult<bool> {
-    for token in tokens.values() {
-        match token {
-            InputToken::Ready(_) => continue,
-            InputToken::Pending => return Ok(false),
+    pub(crate) fn new() -> Self {
+        Self {
+            hmap: HashMap::new(),
         }
     }
 
-    Ok(true)
+    pub fn get(&self, port_id: &str) -> Option<&LinkReceiver<Message>> {
+        self.hmap.get(port_id)
+    }
 }
+
+pub struct Outputs {
+    pub(crate) hmap: HashMap<PortId, LinkSender<Message>>,
+}
+
+impl Outputs {
+    pub(crate) fn new() -> Self {
+        Self {
+            hmap: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, port_id: &str) -> Option<&LinkSender<Message>> {
+        self.hmap.get(port_id)
+    }
+}
+
+// /// The inputs provided to operator's run function.
+// /// Inputs are indexed by [`PortId`](`PortId`)
+// /// *NOTE:* Not yet used.
+// /// It will be used instead of the `HashMap<PortId,DataMessage>` in
+// /// `Operator::run` function.
+// #[derive(Debug, Clone)]
+// pub struct Inputs(HashMap<PortId, DataMessage>);
+
+// impl Default for Inputs {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
+
+// impl Inputs {
+//     /// Creates an empty set of `Inputs`.
+//     pub fn new() -> Self {
+//         Self(HashMap::new())
+//     }
+
+//     /// Inserts the given `data` with the given `id`.
+//     pub fn insert(&mut self, id: PortId, data: DataMessage) -> Option<DataMessage> {
+//         self.0.insert(id, data)
+//     }
+
+//     /// Gets a reference to the data identified by the `id`.
+//     pub fn get(&self, id: &PortId) -> Option<&DataMessage> {
+//         self.0.get(id)
+//     }
+//     /// Gets a mutable reference to the data idenfitied by the `id`.
+//     pub fn get_mut(&mut self, id: &PortId) -> Option<&mut DataMessage> {
+//         self.0.get_mut(id)
+//     }
+// }
+
+// impl<'a> IntoIterator for &'a Inputs {
+//     type Item = (&'a PortId, &'a DataMessage);
+//     type IntoIter = std::collections::hash_map::Iter<'a, PortId, DataMessage>;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.0.iter()
+//     }
+// }
+
+// /// The empty state is a commodity struct provided to user that do not
+// /// need any state for they operators.
+// #[derive(Debug, Clone)]
+// pub struct EmptyState;
+
+// impl ZFState for EmptyState {
+//     fn as_any(&self) -> &dyn std::any::Any {
+//         self
+//     }
+
+//     fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
+//         self
+//     }
+// }
+
+// /// Commodity function for users that do not need output
+// /// rules in their operators.
+// /// The data is simply converted to the
+// /// expected [`NodeOutput`](`NodeOutput`) type.
+// pub fn default_output_rule(
+//     _state: &mut State,
+//     outputs: HashMap<PortId, Data>,
+// ) -> ZFResult<HashMap<PortId, NodeOutput>> {
+//     let mut results = HashMap::with_capacity(outputs.len());
+//     for (k, v) in outputs {
+//         results.insert(k, NodeOutput::Data(v));
+//     }
+
+//     Ok(results)
+// }
+
+// /// Commodity function for users that need their operators to behave
+// /// in a KPN manner:
+// /// all inputs must be present before a computation can be triggered.
+// pub fn default_input_rule(
+//     _state: &mut State,
+//     tokens: &mut HashMap<PortId, InputToken>,
+// ) -> ZFResult<bool> {
+//     for token in tokens.values() {
+//         match token {
+//             InputToken::Ready(_) => continue,
+//             InputToken::Pending => return Ok(false),
+//         }
+//     }
+
+//     Ok(true)
+// }
 
 /// The generic configuration of a graph node.
 /// It is a re-export of `serde_json::Value`

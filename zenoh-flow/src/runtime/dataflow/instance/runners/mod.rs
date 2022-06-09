@@ -153,6 +153,7 @@ pub trait Runner: Send + Sync {
     /// The actual run where the magic happens.
     ///
     /// # Errors
+    ///
     /// It can fail to indicate that something went wrong when executing the
     /// node.
     async fn run(&self) -> ZFResult<()>;
@@ -171,11 +172,11 @@ pub trait Runner: Send + Sync {
     /// if it does not expect any outputs (e.g.  Sink)
     async fn add_output(&self, output: LinkSender<Message>) -> ZFResult<()>;
 
-    /// Finalizes the node
-    ///
-    /// # Errors
-    /// Returns an error variant if the finalize fails.
-    async fn clean(&self) -> ZFResult<()>;
+    // /// Finalizes the node
+    // ///
+    // /// # Errors
+    // /// Returns an error variant if the finalize fails.
+    // async fn clean(&self) -> ZFResult<()>;
 
     /// Returns the type of the runner.
     fn get_kind(&self) -> RunnerKind;

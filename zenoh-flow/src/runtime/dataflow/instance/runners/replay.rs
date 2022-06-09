@@ -116,9 +116,9 @@ impl Runner for ZenohReplay {
         Err(ZFError::SourceDoNotHaveInputs)
     }
 
-    async fn clean(&self) -> ZFResult<()> {
-        Ok(())
-    }
+    // async fn clean(&self) -> ZFResult<()> {
+    //     Ok(())
+    // }
 
     fn get_outputs(&self) -> HashMap<PortId, PortType> {
         let mut outputs = HashMap::with_capacity(1);

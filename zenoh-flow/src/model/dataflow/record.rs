@@ -26,8 +26,7 @@ use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
 use uuid::Uuid;
 
-///A `DataFlowRecord` is an instance of a [`DataFlowDescriptor`](`DataFlowDescriptor`).
-///
+/// A `DataFlowRecord` is an instance of a [`DataFlowDescriptor`](`DataFlowDescriptor`).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DataFlowRecord {
     pub uuid: Uuid,

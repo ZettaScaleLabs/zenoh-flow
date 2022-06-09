@@ -191,9 +191,9 @@ impl Runner for ZenohSender {
         *self.is_running.lock().await = false;
     }
 
-    async fn clean(&self) -> ZFResult<()> {
-        Ok(())
-    }
+    // async fn clean(&self) -> ZFResult<()> {
+    //     Ok(())
+    // }
 }
 
 /// A `ZenohReceiver` receives the messages from Zenoh when nodes are running
@@ -326,9 +326,9 @@ impl Runner for ZenohReceiver {
         HashMap::with_capacity(0)
     }
 
-    async fn clean(&self) -> ZFResult<()> {
-        Ok(())
-    }
+    // async fn clean(&self) -> ZFResult<()> {
+    //     Ok(())
+    // }
 
     async fn start_recording(&self) -> ZFResult<String> {
         Err(ZFError::Unsupported)

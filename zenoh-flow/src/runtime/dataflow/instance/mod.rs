@@ -360,11 +360,12 @@ impl DataflowInstance {
     /// # Errors
     /// If fails if the node is not found.
     pub async fn clean_node(&mut self, node_id: &NodeId) -> ZFResult<()> {
-        let runner = self
-            .runners
-            .get(node_id)
-            .ok_or_else(|| ZFError::NodeNotFound(node_id.clone()))?;
-        runner.clean().await
+        // let runner = self
+        //     .runners
+        //     .get(node_id)
+        //     .ok_or_else(|| ZFError::NodeNotFound(node_id.clone()))?;
+        // runner.clean().await
+        Ok(())
     }
 
     /// Starts the recording for the given source.

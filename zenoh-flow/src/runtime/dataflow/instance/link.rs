@@ -14,6 +14,8 @@
 
 use crate::{PortId, ZFResult};
 use async_std::sync::Arc;
+use futures::Future;
+use std::pin::Pin;
 
 /// The Zenoh Flow link sender.
 /// A wrapper over a flume Sender, that sends `Arc<T>` and is associated
@@ -22,6 +24,13 @@ use async_std::sync::Arc;
 pub struct LinkSender<T> {
     pub id: PortId,
     pub sender: flume::Sender<Arc<T>>,
+}
+
+pub type CallbackTx<State, T> =
+    Arc<dyn Fn(State) -> Pin<Box<dyn Future<Output = T> + Send + Sync>>>;
+pub struct CallbackSender<State, T> {
+    pub(crate) sender: LinkSender<T>,
+    pub(crate) callback: CallbackTx<State, T>,
 }
 
 /// The Zenoh Flow link receiver.
@@ -33,15 +42,20 @@ pub struct LinkReceiver<T> {
     pub receiver: flume::Receiver<Arc<T>>,
 }
 
+pub type CallbackRx<State, T> =
+    Arc<dyn Fn(State, T) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>>>;
+pub struct CallbackReceiver<State, T> {
+    pub(crate) receiver: LinkReceiver<T>,
+    pub(crate) callback: CallbackRx<State, T>,
+}
+
 /// The output of the [`LinkReceiver<T>`](`LinkReceiver<T>`), a tuple
 /// containing the `PortId` and `Arc<T>`.
 ///
 /// In Zenoh Flow `T = Data`.
-///
-///
 pub type ZFLinkOutput<T> = ZFResult<(PortId, Arc<T>)>;
 
-impl<T: std::marker::Send + std::marker::Sync> LinkReceiver<T> {
+impl<T: 'static + Send + Sync> LinkReceiver<T> {
     /// Wrapper over flume::Receiver::recv_async(),
     /// it returns [`ZFLinkOutput<T>`](`ZFLinkOutput<T>`)
     ///
@@ -56,6 +70,16 @@ impl<T: std::marker::Send + std::marker::Sync> LinkReceiver<T> {
         }
 
         Box::pin(__recv(self))
+    }
+
+    pub fn into_callback<State: 'static + Send + Sync>(
+        self,
+        callback: CallbackRx<State, T>,
+    ) -> CallbackReceiver<State, T> {
+        CallbackReceiver {
+            receiver: self,
+            callback,
+        }
     }
 
     /// Discards the message
@@ -79,7 +103,7 @@ impl<T: std::marker::Send + std::marker::Sync> LinkReceiver<T> {
     }
 }
 
-impl<T> LinkSender<T> {
+impl<T: 'static + Send + Sync> LinkSender<T> {
     /// Wrapper over flume::Sender::send_async(),
     /// it sends `Arc<T>`.
     ///
@@ -87,6 +111,17 @@ impl<T> LinkSender<T> {
     /// It fails if the link is disconnected
     pub async fn send(&self, data: Arc<T>) -> ZFResult<()> {
         Ok(self.sender.send_async(data).await?)
+    }
+
+    pub fn into_callback<State: 'static + Send + Sync>(
+        self,
+        context: &mut Context, // FIXME
+        callback: CallbackTx<State, T>,
+    ) -> CallbackSender<State, T> {
+        CallbackSender {
+            sender: self,
+            callback,
+        }
     }
 
     /// Returns the sender occupation.

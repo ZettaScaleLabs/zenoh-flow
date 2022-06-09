@@ -16,7 +16,7 @@ pub mod instance;
 pub mod loader;
 pub mod node;
 
-use async_std::sync::{Arc, Mutex};
+use async_std::sync::Arc;
 use std::collections::HashMap;
 use std::time::Duration;
 use uuid::Uuid;
@@ -31,8 +31,7 @@ use crate::model::{InputDescriptor, OutputDescriptor};
 use crate::runtime::dataflow::node::{OperatorLoaded, SinkLoaded, SourceLoaded};
 use crate::runtime::RuntimeContext;
 use crate::{
-    DurationDescriptor, FlowId, NodeId, Operator, PortId, PortType, Sink, Source, State, ZFError,
-    ZFResult,
+    DurationDescriptor, FlowId, NodeId, Operator, PortId, PortType, Sink, Source, ZFError, ZFResult,
 };
 
 /// The data flow struct.
@@ -167,7 +166,7 @@ impl Dataflow {
         id: NodeId,
         period: Option<DurationDescriptor>,
         output: PortDescriptor,
-        state: State,
+        // state: State,
         source: Arc<dyn Source>,
     ) -> ZFResult<()> {
         self.validator.try_add_source(id.clone(), output.clone())?;
@@ -177,7 +176,6 @@ impl Dataflow {
             SourceLoaded {
                 id,
                 output,
-                state: Arc::new(Mutex::new(state)),
                 period: period.map(|dur_desc| dur_desc.to_duration()),
                 source,
                 library: None,
@@ -203,7 +201,7 @@ impl Dataflow {
         inputs: Vec<PortDescriptor>,
         outputs: Vec<PortDescriptor>,
         local_deadline: Option<Duration>,
-        state: State,
+        // state: State,
         operator: Arc<dyn Operator>,
     ) -> ZFResult<()> {
         self.validator
@@ -225,7 +223,6 @@ impl Dataflow {
                 inputs,
                 outputs,
                 local_deadline,
-                state: Arc::new(Mutex::new(state)),
                 operator,
                 library: None,
                 end_to_end_deadlines: vec![],
@@ -249,7 +246,7 @@ impl Dataflow {
         &mut self,
         id: NodeId,
         input: PortDescriptor,
-        state: State,
+        // state: State,
         sink: Arc<dyn Sink>,
     ) -> ZFResult<()> {
         self.validator.try_add_sink(id.clone(), input.clone())?;
@@ -259,7 +256,7 @@ impl Dataflow {
             SinkLoaded {
                 id,
                 input,
-                state: Arc::new(Mutex::new(state)),
+                // state: Arc::new(Mutex::new(state)),
                 sink,
                 library: None,
                 end_to_end_deadlines: vec![],

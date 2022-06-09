@@ -12,14 +12,12 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::runtime::message::DataMessage;
-use crate::{
-    Configuration, Context, Data, InputToken, LocalDeadlineMiss, NodeOutput, PortId, State,
-    ZFResult,
-};
+use crate::runtime::dataflow::instance::link::{CallbackReceiver, CallbackSender};
+use crate::runtime::dataflow::instance::runners::RunnerManager;
+use crate::{Configuration, Context, Inputs, Outputs, ZFResult};
+use async_std::sync::Arc;
 use async_trait::async_trait;
 use std::any::Any;
-use std::collections::HashMap;
 use std::fmt::Debug;
 
 /// This trait is used to ensure the data can donwcast to [`Any`](`Any`)
@@ -118,7 +116,6 @@ pub trait Deserializable {
 /// pub struct MyState;
 /// ```
 ///
-
 pub trait ZFState: Debug + Send + Sync {
     /// Donwcast as reference to [`Any`](`Any`)
     fn as_any(&self) -> &dyn Any;
@@ -127,137 +124,45 @@ pub trait ZFState: Debug + Send + Sync {
     fn as_mut_any(&mut self) -> &mut dyn Any;
 }
 
-/// The `Node` trait represents a generic node in the data flow graph.
-/// It contains functions that are common between Operator, Sink and Source.
-/// It has to be implemented for each node within a graph.
-pub trait Node {
-    /// This method is used to initialize the state of the node.
-    /// It is called by the Zenoh Flow runtime when initializing the data flow
-    /// graph.
-    /// An example of node state is files that should be opened, connection
-    /// to devices or internal configuration.
-    ///
-    /// # Errors
-    /// If it fails to initialize an error variant will be returned.
-    fn initialize(&self, configuration: &Option<Configuration>) -> ZFResult<State>;
-
-    /// This method is used to finalize the state of the node.
-    /// It is called by the Zenoh Flow runtime when tearing down the data
-    /// flow graph.
-    ///
-    /// An example of node state to finalize is files to be closed,
-    /// clean-up of libraries, or devices.
-    ///
-    /// # Errors
-    /// If it fails to finalize an error variant will be returned.
-    fn finalize(&self, state: &mut State) -> ZFResult<()>;
+/// The `Source` trait represents a Source inside Zenoh Flow.
+#[async_trait]
+pub trait Source: Send + Sync {
+    async fn setup(
+        self,
+        context: &mut Context,
+        configuration: Configuration,
+        outputs: Outputs,
+    ) -> (
+        Vec<CallbackSender<Arc<dyn Any>, Arc<dyn ZFData>>>,
+        Option<RunnerManager>,
+    );
 }
 
 /// The `Operator` trait represents an Operator inside Zenoh Flow.
-pub trait Operator: Node + Send + Sync {
-    /// This method is called when data is received on one or more inputs.
-    /// The result of this method is use as discriminant to trigger the
-    /// operator's run function.
-    /// An operator can access its context and state during
-    /// the execution of this function.
-    ///
-    /// The received data is provided as [`InputToken`](`InputToken`) that
-    /// represents the state of the associated port.
-    /// Based on the tokens and on the data users can decide to trigger
-    /// the run or not.
-    /// The commodity function [`default_input_rule`](`default_input_rule`)
-    /// can be used if the operator should be triggered based on KPN rules.
-    ///
-    /// # Errors
-    /// If something goes wrong during execution an error
-    /// variant will be returned.
-    fn input_rule(
-        &self,
+pub trait Operator: Send + Sync {
+    fn setup(
+        self,
         context: &mut Context,
-        state: &mut State,
-        tokens: &mut HashMap<PortId, InputToken>,
-    ) -> ZFResult<bool>;
-
-    /// This method is the actual one processing the data.
-    /// It is triggered based on the result of the `input_rule`.
-    /// As operators are computing over data,
-    /// *I/O should not be done in the run*.
-    ///
-    /// An operator can access its context and state
-    /// during the execution of this function.
-    /// The result of a computation can also not provide any output.
-    /// When it does provide output the `PortId` used should match the one
-    /// defined in the descriptor for the operator. Any not matching `PortId`
-    /// will be dropped.
-    ///
-    /// # Errors
-    /// If something goes wrong during execution an error
-    /// variant will be returned.
-    fn run(
-        &self,
-        context: &mut Context,
-        state: &mut State,
-        inputs: &mut HashMap<PortId, DataMessage>,
-    ) -> ZFResult<HashMap<PortId, Data>>;
-
-    /// This method is called after the run, its main purpose is to check
-    /// for missed local deadlines.
-    /// It can also be used for further analysis and
-    /// adjustment over the computed data.
-    /// E.g. flooring a value to a specified MAX, or check if it is within
-    /// a given range.
-    ///
-    /// An operator can access its context and
-    /// state during the execution of this function.
-    /// The commodity function [`default_output_rule`](`default_output_rule`)
-    /// can be used if the operator does not need any post-processing.
-    ///
-    /// # Errors
-    /// If something goes wrong during execution an error
-    /// variant will be returned.
-    fn output_rule(
-        &self,
-        context: &mut Context,
-        state: &mut State,
-        outputs: HashMap<PortId, Data>,
-        deadline_miss: Option<LocalDeadlineMiss>,
-    ) -> ZFResult<HashMap<PortId, NodeOutput>>;
+        configuration: Configuration,
+        inputs: Inputs,
+        outputs: Outputs,
+    ) -> (
+        // Vec<CallbackReceiver<Arc<dyn Any>, Arc<dyn Deserializable>>>,
+        // Vec<CallbackSender<Arc<dyn Any>, Arc<dyn ZFData>>>,
+        Option<RunnerManager>,
+    );
 }
 
-/// The `Source` trait represents a Source inside Zenoh Flow
+/// The `Sink` trait represents a Sink inside Zenoh Flow.
 #[async_trait]
-pub trait Source: Node + Send + Sync {
-    /// This method is the actual one producing the data.
-    /// It is triggered on a loop, and if the `period` is specified
-    /// in the descriptor it is triggered with the given period.
-    /// This method is `async` therefore I/O is possible, e.g. reading data
-    /// from a file/external device.
-    ///
-    /// The Source can access its state and context while executing.
-    ///
-    /// # Errors
-    /// If something goes wrong during execution an error
-    /// variant will be returned.
-    async fn run(&self, context: &mut Context, state: &mut State) -> ZFResult<Data>;
-}
-
-/// The `Sink` trait represents a Sink inside Zenoh Flow
-#[async_trait]
-pub trait Sink: Node + Send + Sync {
-    /// This method is the actual one consuming the data.
-    /// It is triggered whenever data arrives on the Sink input.
-    /// This method is `async` therefore I/O is possible, e.g. writing to
-    /// a file or interacting with an external device.
-    ///
-    /// The Sink can access its state and context while executing.
-    ///
-    /// # Errors
-    /// If something goes wrong during execution an error
-    /// variant will be returned.
-    async fn run(
-        &self,
+pub trait Sink: Send + Sync {
+    async fn setup(
+        self,
         context: &mut Context,
-        state: &mut State,
-        input: DataMessage,
-    ) -> ZFResult<()>;
+        configuration: Configuration,
+        inputs: Inputs,
+    ) -> (
+        Vec<CallbackReceiver<Arc<dyn Any>, Arc<dyn Deserializable>>>,
+        Option<RunnerManager>,
+    );
 }

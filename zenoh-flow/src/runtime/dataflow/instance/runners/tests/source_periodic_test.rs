@@ -21,8 +21,8 @@ use crate::runtime::dataflow::instance::runners::NodeRunner;
 use crate::runtime::dataflow::loader::{Loader, LoaderConfig};
 use crate::runtime::{InstanceContext, RuntimeContext};
 use crate::{
-    Configuration, Context, Data, Deserializable, DowncastAny, EmptyState, Message, Node, NodeId,
-    PortId, Source, State, ZFData, ZFResult,
+    Configuration, Context, Data, Deserializable, DowncastAny, EmptyState, Message, NodeId, PortId,
+    Source, State, ZFData, ZFResult,
 };
 use async_std::sync::{Arc, Mutex};
 use async_trait::async_trait;
@@ -71,15 +71,15 @@ impl Deserializable for ZFTick {
 // -------------------------------------------------------------------------------------------------
 struct TestSourcePeriodic {}
 
-impl Node for TestSourcePeriodic {
-    fn initialize(&self, _configuration: &Option<Configuration>) -> ZFResult<State> {
-        Ok(State::from::<EmptyState>(EmptyState {}))
-    }
+// impl Node for TestSourcePeriodic {
+//     fn initialize(&self, _configuration: &Option<Configuration>) -> ZFResult<State> {
+//         Ok(State::from::<EmptyState>(EmptyState {}))
+//     }
 
-    fn finalize(&self, _state: &mut State) -> ZFResult<()> {
-        Ok(())
-    }
-}
+//     fn finalize(&self, _state: &mut State) -> ZFResult<()> {
+//         Ok(())
+//     }
+// }
 
 #[async_trait]
 impl Source for TestSourcePeriodic {
