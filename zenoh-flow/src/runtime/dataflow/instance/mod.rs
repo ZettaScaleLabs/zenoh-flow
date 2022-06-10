@@ -63,7 +63,7 @@ fn create_links(
             continue;
         }
 
-        let (tx, rx) = link::<Message>(
+        let (tx, rx) = link(
             None,
             link_desc.from.output.clone(),
             link_desc.to.input.clone(),

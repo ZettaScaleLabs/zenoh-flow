@@ -13,9 +13,11 @@
 //
 
 use crate::async_std::sync::Arc;
-use crate::runtime::dataflow::instance::link::{LinkReceiver, LinkSender};
+use crate::runtime::dataflow::instance::link::{
+    CallbackReceiver, CallbackSender, LinkReceiver, LinkSender,
+};
 use crate::serde::{Deserialize, Serialize};
-use crate::{ControlMessage, Message, ZFData};
+use crate::{ControlMessage, ZFData};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -37,9 +39,10 @@ pub use crate::ZFError;
 /// Context is a structure provided by Zenoh Flow to access
 /// the execution context directly from the nodes.
 /// It contains the `mode` as usize.
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct Context {
-    pub mode: usize,
+    pub(crate) callback_receivers: Vec<CallbackReceiver>,
+    pub(crate) callback_senders: Vec<CallbackSender>,
 }
 
 /// The Zenoh Flow data.
@@ -205,7 +208,7 @@ pub enum NodeOutput {
 }
 
 pub struct Inputs {
-    pub(crate) hmap: HashMap<PortId, LinkReceiver<Message>>,
+    pub(crate) hmap: HashMap<PortId, LinkReceiver>,
 }
 
 impl Inputs {
@@ -215,13 +218,13 @@ impl Inputs {
         }
     }
 
-    pub fn get(&self, port_id: &str) -> Option<&LinkReceiver<Message>> {
+    pub fn get(&self, port_id: &str) -> Option<&LinkReceiver> {
         self.hmap.get(port_id)
     }
 }
 
 pub struct Outputs {
-    pub(crate) hmap: HashMap<PortId, LinkSender<Message>>,
+    pub(crate) hmap: HashMap<PortId, LinkSender>,
 }
 
 impl Outputs {
@@ -231,7 +234,7 @@ impl Outputs {
         }
     }
 
-    pub fn get(&self, port_id: &str) -> Option<&LinkSender<Message>> {
+    pub fn get(&self, port_id: &str) -> Option<&LinkSender> {
         self.hmap.get(port_id)
     }
 }

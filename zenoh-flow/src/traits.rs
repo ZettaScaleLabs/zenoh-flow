@@ -12,10 +12,8 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::runtime::dataflow::instance::link::{CallbackReceiver, CallbackSender};
 use crate::runtime::dataflow::instance::runners::RunnerManager;
 use crate::{Configuration, Context, Inputs, Outputs, ZFResult};
-use async_std::sync::Arc;
 use async_trait::async_trait;
 use std::any::Any;
 use std::fmt::Debug;
@@ -132,10 +130,7 @@ pub trait Source: Send + Sync {
         context: &mut Context,
         configuration: Configuration,
         outputs: Outputs,
-    ) -> (
-        Vec<CallbackSender<Arc<dyn Any>, Arc<dyn ZFData>>>,
-        Option<RunnerManager>,
-    );
+    ) -> Option<RunnerManager>;
 }
 
 /// The `Operator` trait represents an Operator inside Zenoh Flow.
@@ -161,8 +156,5 @@ pub trait Sink: Send + Sync {
         context: &mut Context,
         configuration: Configuration,
         inputs: Inputs,
-    ) -> (
-        Vec<CallbackReceiver<Arc<dyn Any>, Arc<dyn Deserializable>>>,
-        Option<RunnerManager>,
-    );
+    ) -> Option<RunnerManager>;
 }

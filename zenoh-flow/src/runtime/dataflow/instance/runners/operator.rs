@@ -38,8 +38,8 @@ use libloading::Library;
 /// of a node.
 #[derive(Default)]
 pub struct OperatorIO {
-    inputs: HashMap<PortId, LinkReceiver<Message>>,
-    outputs: HashMap<PortId, Vec<LinkSender<Message>>>,
+    inputs: HashMap<PortId, LinkReceiver>,
+    outputs: HashMap<PortId, Vec<LinkSender>>,
 }
 
 /// Future of the `Receiver`
@@ -60,9 +60,9 @@ impl OperatorIO {
 }
 
 /// Type of Inputs
-pub type InputsLink = HashMap<PortId, LinkReceiver<Message>>;
+pub type InputsLink = HashMap<PortId, LinkReceiver>;
 /// Type of Outputs
-pub type OutputsLinks = HashMap<PortId, Vec<LinkSender<Message>>>;
+pub type OutputsLinks = HashMap<PortId, Vec<LinkSender>>;
 
 impl OperatorIO {
     /// Creates the `OperatorIO` from an [`OperatorRecord`](`OperatorRecord`)
@@ -73,11 +73,11 @@ impl OperatorIO {
         }
     }
 
-    /// Tries to add the given `LinkReceiver<Message>`
+    /// Tries to add the given `LinkReceiver`
     ///
     /// # Errors
     /// It fails if the `PortId` is duplicated.
-    pub fn try_add_input(&mut self, rx: LinkReceiver<Message>) -> ZFResult<()> {
+    pub fn try_add_input(&mut self, rx: LinkReceiver) -> ZFResult<()> {
         if self.inputs.contains_key(&rx.id()) {
             return Err(ZFError::DuplicatedPort((rx.id(), rx.id())));
         }
@@ -87,8 +87,8 @@ impl OperatorIO {
         Ok(())
     }
 
-    /// Adds the given `LinkSender<Message>`
-    pub fn add_output(&mut self, tx: LinkSender<Message>) {
+    /// Adds the given `LinkSender`
+    pub fn add_output(&mut self, tx: LinkSender) {
         if let Some(vec_senders) = self.outputs.get_mut(&tx.id()) {
             vec_senders.push(tx);
         } else {
@@ -200,14 +200,14 @@ impl Runner for OperatorRunner {
         RunnerKind::Operator
     }
 
-    async fn add_input(&self, input: LinkReceiver<Message>) -> ZFResult<()> {
+    async fn add_input(&self, input: LinkReceiver) -> ZFResult<()> {
         let mut guard = self.io.lock().await;
         let key = input.id();
         guard.inputs.insert(key, input);
         Ok(())
     }
 
-    async fn add_output(&self, output: LinkSender<Message>) -> ZFResult<()> {
+    async fn add_output(&self, output: LinkSender) -> ZFResult<()> {
         let mut guard = self.io.lock().await;
         let key = output.id();
         if let Some(links) = guard.outputs.get_mut(key.as_ref()) {
@@ -226,11 +226,11 @@ impl Runner for OperatorRunner {
         self.outputs.clone()
     }
 
-    async fn get_outputs_links(&self) -> HashMap<PortId, Vec<LinkSender<Message>>> {
+    async fn get_outputs_links(&self) -> HashMap<PortId, Vec<LinkSender>> {
         self.io.lock().await.get_outputs()
     }
 
-    async fn take_input_links(&self) -> HashMap<PortId, LinkReceiver<Message>> {
+    async fn take_input_links(&self) -> HashMap<PortId, LinkReceiver> {
         let inputs = HashMap::new();
         let mut io_guard = self.io.lock().await;
         let current_inputs = io_guard.get_inputs();
@@ -274,36 +274,38 @@ impl Runner for OperatorRunner {
             .collect();
         let mut data: HashMap<PortId, DataMessage> = HashMap::with_capacity(tokens.len());
 
+        Ok(())
+
         // Looping on iteration, each iteration is a single
         // run of the source, as a run can fail in case of error it
         // stops and returns the error to the caller (the RunnerManager)
-        loop {
-            match self.iteration(context, tokens, data).await {
-                Ok((ctx, tkn, d)) => {
-                    log::trace!(
-                        "[Operator: {}] iteration ok with new context {:?}",
-                        self.id,
-                        ctx
-                    );
-                    context = ctx;
-                    tokens = tkn;
-                    data = d;
-                    // As async_std scheduler is run to completion,
-                    // if the iteration is always ready there is a possibility
-                    // that other tasks are not scheduled (e.g. the stopping
-                    // task), therefore after the iteration we give back
-                    // the control to the scheduler, if no other tasks are
-                    // ready, then this one is scheduled again.
-                    async_std::task::yield_now().await;
-                    continue;
-                }
-                Err(e) => {
-                    log::error!("[Operator: {}] iteration failed with error: {}", self.id, e);
-                    self.stop().await;
-                    break Err(e);
-                }
-            }
-        }
+        // loop {
+        //     match self.iteration(context, tokens, data).await {
+        //         Ok((ctx, tkn, d)) => {
+        //             log::trace!(
+        //                 "[Operator: {}] iteration ok with new context {:?}",
+        //                 self.id,
+        //                 ctx
+        //             );
+        //             context = ctx;
+        //             tokens = tkn;
+        //             data = d;
+        //             // As async_std scheduler is run to completion,
+        //             // if the iteration is always ready there is a possibility
+        //             // that other tasks are not scheduled (e.g. the stopping
+        //             // task), therefore after the iteration we give back
+        //             // the control to the scheduler, if no other tasks are
+        //             // ready, then this one is scheduled again.
+        //             async_std::task::yield_now().await;
+        //             continue;
+        //         }
+        //         Err(e) => {
+        //             log::error!("[Operator: {}] iteration failed with error: {}", self.id, e);
+        //             self.stop().await;
+        //             break Err(e);
+        //         }
+        //     }
+        // }
     }
 }
 

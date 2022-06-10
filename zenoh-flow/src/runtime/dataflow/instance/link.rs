@@ -12,50 +12,53 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::{PortId, ZFResult};
+use crate::{Context, Message, PortId, ZFResult};
 use async_std::sync::Arc;
 use futures::Future;
-use std::pin::Pin;
+use std::{any::Any, pin::Pin};
 
 /// The Zenoh Flow link sender.
 /// A wrapper over a flume Sender, that sends `Arc<T>` and is associated
 /// with a `PortId`
 #[derive(Clone, Debug)]
-pub struct LinkSender<T> {
+pub struct LinkSender {
     pub id: PortId,
-    pub sender: flume::Sender<Arc<T>>,
+    pub sender: flume::Sender<Arc<Message>>,
 }
 
-pub type CallbackTx<State, T> =
-    Arc<dyn Fn(State) -> Pin<Box<dyn Future<Output = T> + Send + Sync>>>;
-pub struct CallbackSender<State, T> {
-    pub(crate) sender: LinkSender<T>,
-    pub(crate) callback: CallbackTx<State, T>,
+pub type CallbackTx =
+    Arc<dyn Fn(dyn Any) -> Pin<Box<dyn Future<Output = Message> + Send + Sync>> + Send + Sync>;
+
+pub struct CallbackSender {
+    pub(crate) sender: LinkSender,
+    pub(crate) callback: CallbackTx,
 }
 
 /// The Zenoh Flow link receiver.
 /// A wrapper over a flume Receiver, that receives `Arc<T>` and the associated
 /// `PortId`
 #[derive(Clone, Debug)]
-pub struct LinkReceiver<T> {
+pub struct LinkReceiver {
     pub id: PortId,
-    pub receiver: flume::Receiver<Arc<T>>,
+    pub receiver: flume::Receiver<Arc<Message>>,
 }
 
-pub type CallbackRx<State, T> =
-    Arc<dyn Fn(State, T) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>>>;
-pub struct CallbackReceiver<State, T> {
-    pub(crate) receiver: LinkReceiver<T>,
-    pub(crate) callback: CallbackRx<State, T>,
+pub type CallbackRx = Arc<
+    dyn Fn(Arc<dyn Any>, Message) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> + Send + Sync,
+>;
+
+pub struct CallbackReceiver {
+    pub(crate) receiver: LinkReceiver,
+    pub(crate) callback: CallbackRx,
 }
 
 /// The output of the [`LinkReceiver<T>`](`LinkReceiver<T>`), a tuple
 /// containing the `PortId` and `Arc<T>`.
 ///
 /// In Zenoh Flow `T = Data`.
-pub type ZFLinkOutput<T> = ZFResult<(PortId, Arc<T>)>;
+pub type ZFLinkOutput = ZFResult<(PortId, Arc<Message>)>;
 
-impl<T: 'static + Send + Sync> LinkReceiver<T> {
+impl LinkReceiver {
     /// Wrapper over flume::Receiver::recv_async(),
     /// it returns [`ZFLinkOutput<T>`](`ZFLinkOutput<T>`)
     ///
@@ -63,23 +66,20 @@ impl<T: 'static + Send + Sync> LinkReceiver<T> {
     /// If fails if the link is disconnected
     pub fn recv(
         &self,
-    ) -> ::core::pin::Pin<Box<dyn std::future::Future<Output = ZFLinkOutput<T>> + '_ + Send + Sync>>
+    ) -> ::core::pin::Pin<Box<dyn std::future::Future<Output = ZFLinkOutput> + '_ + Send + Sync>>
     {
-        async fn __recv<T>(_self: &LinkReceiver<T>) -> ZFResult<(PortId, Arc<T>)> {
+        async fn __recv(_self: &LinkReceiver) -> ZFResult<(PortId, Arc<Message>)> {
             Ok((_self.id.clone(), _self.receiver.recv_async().await?))
         }
 
         Box::pin(__recv(self))
     }
 
-    pub fn into_callback<State: 'static + Send + Sync>(
-        self,
-        callback: CallbackRx<State, T>,
-    ) -> CallbackReceiver<State, T> {
-        CallbackReceiver {
+    pub fn into_callback(self, context: &mut Context, callback: CallbackRx) {
+        context.callback_receivers.push(CallbackReceiver {
             receiver: self,
             callback,
-        }
+        })
     }
 
     /// Discards the message
@@ -103,25 +103,21 @@ impl<T: 'static + Send + Sync> LinkReceiver<T> {
     }
 }
 
-impl<T: 'static + Send + Sync> LinkSender<T> {
+impl LinkSender {
     /// Wrapper over flume::Sender::send_async(),
     /// it sends `Arc<T>`.
     ///
     /// # Errors
     /// It fails if the link is disconnected
-    pub async fn send(&self, data: Arc<T>) -> ZFResult<()> {
+    pub async fn send(&self, data: Arc<Message>) -> ZFResult<()> {
         Ok(self.sender.send_async(data).await?)
     }
 
-    pub fn into_callback<State: 'static + Send + Sync>(
-        self,
-        context: &mut Context, // FIXME
-        callback: CallbackTx<State, T>,
-    ) -> CallbackSender<State, T> {
-        CallbackSender {
+    pub fn into_callback(self, context: &mut Context, callback: CallbackTx) {
+        context.callback_senders.push(CallbackSender {
             sender: self,
             callback,
-        }
+        })
     }
 
     /// Returns the sender occupation.
@@ -151,11 +147,11 @@ impl<T: 'static + Send + Sync> LinkSender<T> {
 }
 
 /// Creates the `Link` with the given capacity and `PortId`s.
-pub fn link<T>(
+pub fn link(
     capacity: Option<usize>,
     send_id: PortId,
     recv_id: PortId,
-) -> (LinkSender<T>, LinkReceiver<T>) {
+) -> (LinkSender, LinkReceiver) {
     let (sender, receiver) = match capacity {
         None => flume::unbounded(),
         Some(cap) => flume::bounded(cap),
