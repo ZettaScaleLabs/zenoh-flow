@@ -12,7 +12,7 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::{Context, Message, PortId, ZFResult};
+use crate::{Context, Data, Message, PortId, ZFResult};
 use async_std::sync::Arc;
 use futures::Future;
 use std::{any::Any, pin::Pin};
@@ -168,3 +168,109 @@ pub fn link(
         },
     )
 }
+
+// Async closures
+
+/// Trait wrapping an async closures for receiver callback, it requires rust-nightly because of
+/// https://github.com/rust-lang/rust/issues/62290
+///
+/// * Note: * not intended to be directly used by users.
+pub trait AsyncCallbackRx: Send + Sync {
+    fn call(
+        &self,
+        arg: Arc<Message>,
+    ) -> Pin<Box<dyn Future<Output = ZFResult<()>> + Send + Sync + 'static>>;
+}
+
+/// Implementation of AsyncCallbackRx for any async closure that takes
+/// `Arc<Message>` as parameter and returns `ZFResult<()>`.
+/// This "converts" any `async move |msg| { ... Ok() }` to `AsyncCallbackRx`
+///
+/// *Note:* It takes an `FnOnce` because of the `move` keyword. The closure
+/// has to be `Clone` as we are going to call the closure more than once.
+impl<Fut, Fun> AsyncCallbackRx for Fun
+where
+    Fun: FnOnce(Arc<Message>) -> Fut + Sync + Send + Clone,
+    Fut: Future<Output = ZFResult<()>> + 'static + Send + Sync,
+{
+    fn call(
+        &self,
+        arg: Arc<Message>,
+    ) -> Pin<Box<dyn Future<Output = ZFResult<()>> + Send + Sync + 'static>> {
+        Box::pin(self.clone()(arg))
+    }
+}
+
+/// The `AsyncCallbackReceiver` wraps the `LinkReceiver` and the
+/// `AsyncCallbackRx`.
+///
+/// It is used to trigger the user callback when a new message is available.
+#[derive(Clone)]
+pub struct AsyncCallbackReceiver {
+    _id: String,
+    rx: LinkReceiver,
+    cb: Arc<dyn AsyncCallbackRx>,
+}
+
+impl AsyncCallbackReceiver {
+    pub fn new(_id: String, rx: LinkReceiver, cb: Arc<dyn AsyncCallbackRx>) -> Self {
+        Self { _id, rx, cb }
+    }
+
+    pub async fn run(&self) -> ZFResult<()> {
+        let (_id, msg) = self.rx.recv().await?;
+        self.cb.call(msg).await
+    }
+}
+
+/// Trait wrapping an async closures for sender callback, it requires rust-nightly because of
+/// https://github.com/rust-lang/rust/issues/62290
+///
+/// * Note: * not intended to be directly used by users.
+pub trait AsyncCallbackTx: Send + Sync {
+    fn call(&self) -> Pin<Box<dyn Future<Output = ZFResult<Data>> + Send + Sync + 'static>>;
+}
+
+/// Implementation of AsyncCallbackTx for any async closure that returns
+/// `ZFResult<()>`.
+/// This "converts" any `async move { ... }` to `AsyncCallbackTx`
+///
+/// *Note:* It takes an `FnOnce` because of the `move` keyword. The closure
+/// has to be `Clone` as we are going to call the closure more than once.
+impl<Fut, Fun> AsyncCallbackTx for Fun
+where
+    Fun: FnOnce() -> Fut + Sync + Send + Clone,
+    Fut: Future<Output = ZFResult<Data>> + Send + Sync + 'static,
+{
+    fn call(&self) -> Pin<Box<dyn Future<Output = ZFResult<Data>> + Send + Sync + 'static>> {
+        Box::pin(self.clone()())
+    }
+}
+
+/// The `AsyncCallbackSender` wraps the `LinkSender` and the
+/// `AsyncCallbackTx`.
+///
+/// It is used to trigger the user callback with the given schedule.
+pub struct AsyncCallbackSender {
+    _id: String,
+    tx: LinkSender,
+    cb: Arc<dyn AsyncCallbackTx>,
+}
+
+impl AsyncCallbackSender {
+    pub fn new(_id: String, tx: LinkSender, cb: Arc<dyn AsyncCallbackTx>) -> Self {
+        Self { _id, tx, cb }
+    }
+
+    pub async fn trigger(&self) -> ZFResult<()> {
+        let data = self.cb.call().await?;
+        // FIXME
+        let ts = uhlc::Timestamp::new(uhlc::NTP64(0u64), uhlc::ID::new(1, [0u8; 16]));
+
+        // FIXME
+        let msg = Message::from_node_output(crate::NodeOutput::Data(data), ts, vec![], vec![]);
+        self.tx.send(Arc::new(msg)).await
+    }
+}
+
+//
