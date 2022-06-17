@@ -17,7 +17,7 @@ use clap::Parser;
 use colored::*;
 
 use cargo_zenoh_flow::error::CZFError;
-use zenoh_flow::model::node::{OperatorDescriptor, SinkDescriptor, SourceDescriptor};
+use zenoh_flow::model::node_old::{OperatorDescriptor, SinkDescriptor, SourceDescriptor};
 use zenoh_flow::model::{NodeKind, RegistryNode, RegistryNodeArchitecture, RegistryNodeTag};
 use zenoh_flow::NodeId;
 

@@ -35,7 +35,6 @@ pub struct SourceLoaded {
     pub(crate) period: Option<Duration>,
     pub(crate) source: Arc<dyn Source>,
     pub(crate) library: Option<Arc<Library>>,
-    pub(crate) end_to_end_deadlines: Vec<E2EDeadlineRecord>,
 }
 
 impl SourceLoaded {
@@ -57,7 +56,6 @@ impl SourceLoaded {
             period: record.period.map(|dur_desc| dur_desc.to_duration()),
             source,
             library: lib,
-            end_to_end_deadlines: vec![],
         })
     }
 }
@@ -69,11 +67,8 @@ pub struct OperatorLoaded {
     pub(crate) id: NodeId,
     pub(crate) inputs: HashMap<PortId, PortType>,
     pub(crate) outputs: HashMap<PortId, PortType>,
-    pub(crate) local_deadline: Option<Duration>,
-    pub(crate) ciclo: Option<LoopDescriptor>,
     pub(crate) operator: Arc<dyn Operator>,
     pub(crate) library: Option<Arc<Library>>,
-    pub(crate) end_to_end_deadlines: Vec<E2EDeadlineRecord>,
 }
 
 impl OperatorLoaded {
@@ -105,11 +100,8 @@ impl OperatorLoaded {
             id: record.id,
             inputs,
             outputs,
-            local_deadline: record.deadline,
             operator,
             library: lib,
-            end_to_end_deadlines: vec![],
-            ciclo: record.ciclo,
         })
     }
 }
@@ -122,7 +114,6 @@ pub struct SinkLoaded {
     pub(crate) input: PortDescriptor,
     pub(crate) sink: Arc<dyn Sink>,
     pub(crate) library: Option<Arc<Library>>,
-    pub(crate) end_to_end_deadlines: Vec<E2EDeadlineRecord>,
 }
 
 impl SinkLoaded {
@@ -143,7 +134,6 @@ impl SinkLoaded {
             input: record.input,
             sink,
             library: lib,
-            end_to_end_deadlines: vec![],
         })
     }
 }

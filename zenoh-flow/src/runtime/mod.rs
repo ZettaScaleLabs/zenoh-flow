@@ -16,11 +16,11 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
-use crate::model::dataflow::descriptor::DataFlowDescriptor;
+use crate::model::dataflow::descriptor::FlattenDataFlowDescriptor;
 use crate::{
     model::{
         dataflow::record::DataFlowRecord,
-        node::{OperatorDescriptor, SinkDescriptor, SourceDescriptor},
+        node::{SimpleOperatorDescriptor, SinkDescriptor, SourceDescriptor},
     },
     serde::{Deserialize, Serialize},
     FlowId,
@@ -66,7 +66,7 @@ pub struct InstanceContext {
     pub runtime: RuntimeContext,
 }
 
-/// This function maps a [`DataFlowDescriptor`](`DataFlowDescriptor`) into
+/// This function maps a [`FlattenDataFlowDescriptor`](`FlattenDataFlowDescriptor`) into
 /// the infrastructure.
 /// The initial implementation simply maps all missing mapping
 /// to the provided runtime.
@@ -75,9 +75,9 @@ pub struct InstanceContext {
 /// An error variant is returned in case of:
 /// - unable to map node to infrastructure
 pub async fn map_to_infrastructure(
-    mut descriptor: DataFlowDescriptor,
+    mut descriptor: FlattenDataFlowDescriptor,
     runtime: &str,
-) -> ZFResult<DataFlowDescriptor> {
+) -> ZFResult<FlattenDataFlowDescriptor> {
     log::debug!("[Dataflow mapping] Begin mapping for: {}", descriptor.flow);
 
     let runtime_id: Arc<str> = runtime.into();
@@ -203,7 +203,7 @@ pub struct RuntimeConfig {
 )]
 pub trait Runtime {
     /// Creates the instance (`DataFlowRecord`) from the
-    /// given [`DataFlowDescriptor`][^note].
+    /// given [`FlattenDataFlowDescriptor`][^note].
     ///
     /// This function:
     /// 1) Generates the instance `Uuid`
@@ -223,7 +223,7 @@ pub trait Runtime {
     /// - error on zenoh-rpc
     /// - unable to map
     /// - unable to prepare nodes
-    async fn create_instance(&self, flow: DataFlowDescriptor) -> ZFResult<DataFlowRecord>;
+    async fn create_instance(&self, flow: FlattenDataFlowDescriptor) -> ZFResult<DataFlowRecord>;
     //TODO: workaround - it should just take the ID of the flow (when
     // the registry will be in place)
 
@@ -240,7 +240,7 @@ pub trait Runtime {
     /// - zenoh error
     async fn delete_instance(&self, record_id: Uuid) -> ZFResult<DataFlowRecord>;
 
-    /// Instantiates the given [`DataFlowDescriptor`][^note].
+    /// Instantiates the given [`FlattenDataFlowDescriptor`][^note].
     /// and, creates the associated [`DataFlowRecord`].
     /// The record contains an [`Uuid`] that identifies the record.
     /// The actual instantiation process runs asynchronously in the runtime.
@@ -255,7 +255,7 @@ pub trait Runtime {
     /// An error variant is returned in case of:
     /// - error on zenoh-rpc
     /// - unable to instantiate
-    async fn instantiate(&self, flow: DataFlowDescriptor) -> ZFResult<DataFlowRecord>;
+    async fn instantiate(&self, flow: FlattenDataFlowDescriptor) -> ZFResult<DataFlowRecord>;
     //TODO: workaround - it should just take the ID of the flow (when
     // the registry will be in place)
 
@@ -459,7 +459,10 @@ pub trait Runtime {
     /// # Errors
     /// An error variant is returned in case of:
     /// - error on zenoh-rpc
-    async fn check_operator_compatibility(&self, operator: OperatorDescriptor) -> ZFResult<bool>;
+    async fn check_operator_compatibility(
+        &self,
+        operator: SimpleOperatorDescriptor,
+    ) -> ZFResult<bool>;
 
     /// Checks the compatibility for the given `source`
     /// Compatibility is based on tags and some machine characteristics (eg. CPU architecture, OS)

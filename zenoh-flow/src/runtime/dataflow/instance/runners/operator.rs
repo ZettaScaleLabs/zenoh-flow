@@ -158,9 +158,10 @@ impl OperatorRunner {
             is_running: Arc::new(Mutex::new(false)),
             operator: operator.operator,
             _library: operator.library,
-            local_deadline: operator.local_deadline,
-            end_to_end_deadlines: operator.end_to_end_deadlines,
-            ciclo: operator.ciclo,
+            // To be killed
+            local_deadline: None,
+            end_to_end_deadlines: vec![],
+            ciclo: None,
         })
     }
 

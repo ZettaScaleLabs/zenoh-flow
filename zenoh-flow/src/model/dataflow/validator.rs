@@ -12,7 +12,7 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::model::dataflow::descriptor::DataFlowDescriptor;
+use crate::model::dataflow::descriptor::FlattenDataFlowDescriptor;
 use crate::model::dataflow::flag::{get_nodes_to_remove, Flag};
 use crate::model::link::PortDescriptor;
 use crate::model::{InputDescriptor, OutputDescriptor};
@@ -92,10 +92,10 @@ struct PortUniqueId {
     kind: PortKind,
 }
 
-impl TryFrom<&DataFlowDescriptor> for DataflowValidator {
+impl TryFrom<&FlattenDataFlowDescriptor> for DataflowValidator {
     type Error = ZFError;
 
-    fn try_from(descriptor: &DataFlowDescriptor) -> Result<Self, Self::Error> {
+    fn try_from(descriptor: &FlattenDataFlowDescriptor) -> Result<Self, Self::Error> {
         let mut validator = DataflowValidator::new();
 
         let mut all_node_ids = vec![];

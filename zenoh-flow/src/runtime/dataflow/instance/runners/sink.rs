@@ -75,7 +75,7 @@ impl SinkRunner {
             context,
             input: sink.input,
             link: Arc::new(Mutex::new(Some(link))),
-            _end_to_end_deadlines: sink.end_to_end_deadlines,
+            _end_to_end_deadlines: vec![],
             is_running: Arc::new(Mutex::new(false)),
             // state: sink.state,
             sink: sink.sink,
