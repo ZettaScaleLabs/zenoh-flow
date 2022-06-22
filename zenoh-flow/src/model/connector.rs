@@ -16,6 +16,8 @@ use crate::model::link::PortDescriptor;
 use crate::serde::{Deserialize, Serialize};
 use crate::{NodeId, RuntimeId};
 
+use super::link::PortRecord;
+
 /// The type of the connector.
 #[derive(PartialEq, Serialize, Deserialize, Debug, Clone)]
 pub enum ZFConnectorKind {
@@ -40,7 +42,7 @@ pub struct ZFConnectorRecord {
     pub kind: ZFConnectorKind,
     pub id: NodeId,
     pub resource: String,
-    pub link_id: PortDescriptor,
+    pub link_id: PortRecord,
     pub runtime: RuntimeId,
 }
 

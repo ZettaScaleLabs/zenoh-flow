@@ -13,7 +13,7 @@
 //
 
 use crate::model::deadline::E2EDeadlineRecord;
-use crate::model::link::PortDescriptor;
+use crate::model::link::PortRecord;
 use crate::model::loops::LoopDescriptor;
 use crate::model::node::{OperatorRecord, SinkRecord, SourceRecord};
 use crate::{NodeId, Operator, PortId, PortType, Sink, Source, ZFResult};
@@ -31,7 +31,7 @@ use libloading::Library;
 /// This struct is then used within a `Runner` to actually run the source.
 pub struct SourceLoaded {
     pub(crate) id: NodeId,
-    pub(crate) output: PortDescriptor,
+    pub(crate) output: PortRecord,
     pub(crate) period: Option<Duration>,
     pub(crate) source: Arc<dyn Source>,
     pub(crate) library: Option<Arc<Library>>,
@@ -111,7 +111,7 @@ impl OperatorLoaded {
 /// This struct is then used within a `Runner` to actually run the sink.
 pub struct SinkLoaded {
     pub(crate) id: NodeId,
-    pub(crate) input: PortDescriptor,
+    pub(crate) input: PortRecord,
     pub(crate) sink: Arc<dyn Sink>,
     pub(crate) library: Option<Arc<Library>>,
 }

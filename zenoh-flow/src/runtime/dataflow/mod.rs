@@ -24,9 +24,7 @@ use uuid::Uuid;
 use crate::model::connector::ZFConnectorRecord;
 use crate::model::dataflow::record::DataFlowRecord;
 use crate::model::dataflow::validator::DataflowValidator;
-use crate::model::deadline::E2EDeadlineRecord;
-use crate::model::link::{LinkDescriptor, PortDescriptor};
-use crate::model::loops::LoopDescriptor;
+use crate::model::link::{LinkDescriptor, LinkRecord, PortDescriptor};
 use crate::model::{InputDescriptor, OutputDescriptor};
 use crate::runtime::dataflow::node::{OperatorLoaded, SinkLoaded, SourceLoaded};
 use crate::runtime::RuntimeContext;
@@ -48,8 +46,9 @@ pub struct Dataflow {
     pub(crate) operators: HashMap<NodeId, OperatorLoaded>,
     pub(crate) sinks: HashMap<NodeId, SinkLoaded>,
     pub(crate) connectors: HashMap<NodeId, ZFConnectorRecord>,
-    pub(crate) links: Vec<LinkDescriptor>,
+    pub(crate) links: Vec<LinkRecord>,
     validator: DataflowValidator,
+    counter: u32,
 }
 
 impl Dataflow {
@@ -76,6 +75,7 @@ impl Dataflow {
             connectors: HashMap::default(),
             links: Vec::default(),
             validator: DataflowValidator::new(),
+            counter: 0u32,
         }
     }
 
@@ -141,6 +141,7 @@ impl Dataflow {
             connectors,
             links: record.links,
             validator: DataflowValidator::new(),
+            counter: record.counter,
         };
 
         Ok(dataflow)
@@ -169,12 +170,13 @@ impl Dataflow {
             id.clone(),
             SourceLoaded {
                 id,
-                output,
+                output: (output, self.counter).into(),
                 period: period.map(|dur_desc| dur_desc.to_duration()),
                 source,
                 library: None,
             },
         );
+        self.counter += 1;
 
         Ok(())
     }
@@ -245,13 +247,13 @@ impl Dataflow {
             id.clone(),
             SinkLoaded {
                 id,
-                input,
+                input: (input, self.counter).into(),
                 // state: Arc::new(Mutex::new(state)),
                 sink,
                 library: None,
             },
         );
-
+        self.counter += 1;
         Ok(())
     }
 
@@ -276,13 +278,15 @@ impl Dataflow {
     ) -> ZFResult<()> {
         self.validator.try_add_link(&from, &to)?;
 
-        self.links.push(LinkDescriptor {
+        self.links.push(LinkRecord {
+            uid: self.counter,
             from,
             to,
             size,
             queueing_policy,
             priority,
         });
+        self.counter += 1;
 
         Ok(())
     }

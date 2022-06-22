@@ -15,7 +15,7 @@
 use super::operator::OperatorIO;
 use crate::async_std::sync::{Arc, Mutex};
 use crate::model::deadline::E2EDeadlineRecord;
-use crate::model::link::PortDescriptor;
+use crate::model::link::{PortDescriptor, PortRecord};
 use crate::runtime::dataflow::instance::link::{LinkReceiver, LinkSender};
 use crate::runtime::dataflow::instance::runners::{Runner, RunnerKind};
 use crate::runtime::dataflow::node::SourceLoaded;
@@ -47,7 +47,7 @@ pub struct SourceRunner {
     pub(crate) id: NodeId,
     pub(crate) context: InstanceContext,
     pub(crate) _period: Option<Duration>,
-    pub(crate) output: PortDescriptor,
+    pub(crate) output: PortRecord,
     pub(crate) links: Arc<Mutex<Vec<LinkSender>>>,
     pub(crate) base_resource_name: String,
     pub(crate) current_recording_resource_id: Arc<Mutex<Option<ExprId>>>,

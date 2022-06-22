@@ -12,15 +12,12 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::model::link::LinkDescriptor;
-use crate::model::loops::LoopDescriptor;
+use crate::model::link::{LinkDescriptor, PortRecord};
 use crate::model::{InputDescriptor, OutputDescriptor, PortDescriptor};
 use crate::types::{Configuration, NodeId, RuntimeId};
 use crate::{merge_configurations, DurationDescriptor, PortType, ZFError, ZFResult};
 use async_recursion::async_recursion;
-use async_std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 // Descriptors
 
 /// Describes a sink.
@@ -608,7 +605,8 @@ impl NodeDescriptor {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SinkRecord {
     pub id: NodeId,
-    pub input: PortDescriptor,
+    pub uid: u32,
+    pub input: PortRecord,
     pub uri: Option<String>,
     pub configuration: Option<Configuration>,
     pub runtime: RuntimeId,
@@ -635,7 +633,8 @@ impl SinkRecord {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SourceRecord {
     pub id: NodeId,
-    pub output: PortDescriptor,
+    pub uid: u32,
+    pub output: PortRecord,
     pub period: Option<DurationDescriptor>,
     pub uri: Option<String>,
     pub configuration: Option<Configuration>,
@@ -663,8 +662,9 @@ impl SourceRecord {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OperatorRecord {
     pub(crate) id: NodeId,
-    pub(crate) inputs: Vec<PortDescriptor>,
-    pub(crate) outputs: Vec<PortDescriptor>,
+    pub uid: u32,
+    pub(crate) inputs: Vec<PortRecord>,
+    pub(crate) outputs: Vec<PortRecord>,
     pub(crate) uri: Option<String>,
     pub(crate) configuration: Option<Configuration>,
     pub(crate) runtime: RuntimeId,

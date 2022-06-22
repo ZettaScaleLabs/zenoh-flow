@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use crate::async_std::sync::{Arc, Mutex};
 use crate::model::deadline::E2EDeadlineRecord;
-use crate::model::link::PortDescriptor;
+use crate::model::link::{PortDescriptor, PortRecord};
 use crate::runtime::dataflow::instance::link::{LinkReceiver, LinkSender};
 use crate::runtime::dataflow::instance::runners::operator::OperatorIO;
 use crate::runtime::dataflow::instance::runners::{Runner, RunnerKind};
@@ -44,7 +44,7 @@ use libloading::Library;
 pub struct SinkRunner {
     pub(crate) id: NodeId,
     pub(crate) context: InstanceContext,
-    pub(crate) input: PortDescriptor,
+    pub(crate) input: PortRecord,
     pub(crate) link: Arc<Mutex<Option<LinkReceiver>>>,
     pub(crate) _end_to_end_deadlines: Vec<E2EDeadlineRecord>, //FIXME
     pub(crate) is_running: Arc<Mutex<bool>>,
