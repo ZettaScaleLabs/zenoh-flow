@@ -14,9 +14,9 @@
 
 pub mod connector;
 pub mod dataflow;
-pub mod deadline;
+// pub mod deadline;
 pub mod link;
-pub mod loops;
+// pub mod loops;
 
 pub mod node;
 
@@ -78,6 +78,8 @@ pub enum NodeKind {
     Operator,
     Sink,
     Source,
+    Sender,
+    Receiver,
 }
 
 impl std::str::FromStr for NodeKind {
@@ -98,9 +100,11 @@ impl std::str::FromStr for NodeKind {
 impl std::string::ToString for NodeKind {
     fn to_string(&self) -> String {
         match self {
-            Self::Operator => String::from("operator"),
-            Self::Sink => String::from("sink"),
-            Self::Source => String::from("source"),
+            NodeKind::Operator => String::from("operator"),
+            NodeKind::Sink => String::from("sink"),
+            NodeKind::Source => String::from("source"),
+            NodeKind::Sender => String::from("sender"),
+            NodeKind::Receiver => String::from("receiver"),
         }
     }
 }

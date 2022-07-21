@@ -14,13 +14,12 @@
 
 use crate::model::connector::{ZFConnectorKind, ZFConnectorRecord};
 use crate::model::dataflow::descriptor::FlattenDataFlowDescriptor;
-use crate::model::deadline::E2EDeadlineRecord;
-use crate::model::link::{LinkDescriptor, LinkRecord, PortDescriptor, PortRecord};
+use crate::model::link::{LinkDescriptor, LinkRecord, PortRecord};
 use crate::model::node::{OperatorRecord, SinkRecord, SourceRecord};
 use crate::model::{InputDescriptor, OutputDescriptor};
 use crate::serde::{Deserialize, Serialize};
 use crate::types::{RuntimeId, ZFError, ZFResult};
-use crate::{merge_configurations, NodeId, Outputs, PortId, PortType};
+use crate::{merge_configurations, NodeId, PortId, PortType};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::hash::{Hash, Hasher};
@@ -377,8 +376,8 @@ impl TryFrom<(FlattenDataFlowDescriptor, Uuid)> for DataFlowRecord {
             let or = OperatorRecord {
                 id: o.id.clone(),
                 uid: dfr.counter,
-                inputs: inputs,
-                outputs: outputs,
+                inputs,
+                outputs,
                 uri: o.uri,
                 configuration: merge_configurations(global_configuration.clone(), o.configuration),
                 runtime: mapping
@@ -402,7 +401,7 @@ impl TryFrom<(FlattenDataFlowDescriptor, Uuid)> for DataFlowRecord {
                 id: s.id.clone(),
                 uid: dfr.counter,
                 period: s.period,
-                output: output,
+                output,
                 uri: s.uri,
                 configuration: merge_configurations(global_configuration.clone(), s.configuration),
                 runtime: mapping
@@ -425,7 +424,7 @@ impl TryFrom<(FlattenDataFlowDescriptor, Uuid)> for DataFlowRecord {
             let sr = SinkRecord {
                 id: s.id.clone(),
                 uid: dfr.counter,
-                input: input,
+                input,
                 uri: s.uri,
                 configuration: merge_configurations(global_configuration.clone(), s.configuration),
                 runtime: mapping

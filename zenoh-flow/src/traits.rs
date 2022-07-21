@@ -12,11 +12,14 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::runtime::dataflow::instance::runners::RunnerManager;
-use crate::{Configuration, Context, Inputs, Outputs, ZFResult};
+use crate::runtime::Context;
+use crate::{Configuration, Inputs, Outputs, ZFResult};
+use async_std::sync::Arc;
 use async_trait::async_trait;
+use futures::Future;
 use std::any::Any;
 use std::fmt::Debug;
+use std::pin::Pin;
 
 /// This trait is used to ensure the data can donwcast to [`Any`](`Any`)
 /// NOTE: This trait is separate from `ZFDataTrait` so that we can provide
@@ -122,39 +125,99 @@ pub trait ZFState: Debug + Send + Sync {
     fn as_mut_any(&mut self) -> &mut dyn Any;
 }
 
+/// The `Node` trait represents a generic node in the data flow graph.
+/// It contains functions that are common between Operator, Sink and Source.
+/// It has to be implemented for each node within a graph.
+#[async_trait]
+pub trait Node {
+    // /// This method is used to initialize the state of the node.
+    // /// It is called by the Zenoh Flow runtime when initializing the data flow
+    // /// graph.
+    // /// An example of node state is files that should be opened, connection
+    // /// to devices or internal configuration.
+    // ///
+    // /// # Errors
+    // /// If it fails to initialize an error variant will be returned.
+    // fn initialize(&self, configuration: &Option<Configuration>) -> ZFResult<State>;
+
+    /// This method is used to finalize a node. It is called by the Zenoh Flow
+    /// runtime when tearing down the data flow graph.
+    ///
+    /// An example of node state to finalize is files to be closed, clean-up of
+    /// libraries, or devices.
+    ///
+    /// # Errors
+    /// If it fails to finalize an error variant will be returned.
+    async fn finalize(&self) -> ZFResult<()>;
+}
+
 /// The `Source` trait represents a Source inside Zenoh Flow.
 #[async_trait]
-pub trait Source: Send + Sync {
+pub trait Source: Node + Send + Sync {
     async fn setup(
-        self,
+        &self,
         context: &mut Context,
-        configuration: Configuration,
+        configuration: &Option<Configuration>,
         outputs: Outputs,
-    ) -> Option<RunnerManager>;
+    ) -> Arc<dyn AsyncIteration>;
 }
 
 /// The `Operator` trait represents an Operator inside Zenoh Flow.
-pub trait Operator: Send + Sync {
-    fn setup(
-        self,
+#[async_trait]
+pub trait Operator: Node + Send + Sync {
+    async fn setup(
+        &self,
         context: &mut Context,
-        configuration: Configuration,
+        configuration: &Option<Configuration>,
         inputs: Inputs,
         outputs: Outputs,
-    ) -> (
-        // Vec<CallbackReceiver<Arc<dyn Any>, Arc<dyn Deserializable>>>,
-        // Vec<CallbackSender<Arc<dyn Any>, Arc<dyn ZFData>>>,
-        Option<RunnerManager>,
-    );
+    ) -> Arc<dyn AsyncIteration>;
 }
 
 /// The `Sink` trait represents a Sink inside Zenoh Flow.
 #[async_trait]
-pub trait Sink: Send + Sync {
+pub trait Sink: Node + Send + Sync {
     async fn setup(
-        self,
+        &self,
         context: &mut Context,
-        configuration: Configuration,
+        configuration: &Option<Configuration>,
         inputs: Inputs,
-    ) -> Option<RunnerManager>;
+    ) -> Arc<dyn AsyncIteration>;
+}
+
+/// A `SourceSink` represents Nodes that access the same physical interface to
+/// read and write.
+#[async_trait]
+pub trait SourceSink: Node + Send + Sync {
+    async fn setup(
+        &self,
+        context: &mut Context,
+        configuration: &Option<Configuration>,
+        inputs: Inputs,
+        outputs: Outputs,
+    ) -> Arc<dyn AsyncIteration>;
+}
+
+/// Trait wrapping an async closures for node iteration, it requires rust-nightly because of
+/// https://github.com/rust-lang/rust/issues/62290
+///
+/// * Note: * not intended to be directly used by users.
+pub trait AsyncIteration: Send + Sync {
+    fn call(&self) -> Pin<Box<dyn Future<Output = ZFResult<()>> + Send + Sync + 'static>>;
+}
+
+/// Implementation of AsyncCallbackTx for any async closure that returns
+/// `ZFResult<()>`.
+/// This "converts" any `async move { ... }` to `AsyncCallbackTx`
+///
+/// *Note:* It takes an `FnOnce` because of the `move` keyword. The closure
+/// has to be `Clone` as we are going to call the closure more than once.
+impl<Fut, Fun> AsyncIteration for Fun
+where
+    Fun: FnOnce() -> Fut + Sync + Send + Clone,
+    Fut: Future<Output = ZFResult<()>> + Send + Sync + 'static,
+{
+    fn call(&self) -> Pin<Box<dyn Future<Output = ZFResult<()>> + Send + Sync + 'static>> {
+        Box::pin(self.clone()())
+    }
 }

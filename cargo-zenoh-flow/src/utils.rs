@@ -199,6 +199,13 @@ pub async fn create_crate(name: &str, kind: NodeKind) -> CZFResult<()> {
             let template = crate::templates::source_template_lib(name.to_string())?;
             (cargo_template, template)
         }
+        _ => {
+            return Err(CZFError::CommandError(
+                "cargo",
+                "node".to_owned(),
+                "Wrong kind of node specified".into(),
+            ))
+        }
     };
 
     let lib_path = std::path::PathBuf::from(format!("{}/src/lib.rs", name));
@@ -220,6 +227,11 @@ pub async fn create_python_module(name: &str, kind: NodeKind) -> CZFResult<()> {
         NodeKind::Operator => crate::templates::operator_template_py(name)?,
         NodeKind::Sink => crate::templates::sink_template_py(name)?,
         NodeKind::Source => crate::templates::source_template_py(name)?,
+        _ => {
+            return Err(CZFError::GenericError(
+                "Only Source, Operator and Sink are accepted".to_string(),
+            ))
+        }
     };
 
     let filename = Path::new(name).join(format!("{name}.py"));
@@ -359,6 +371,11 @@ pub async fn create_cpp_node(name: &str, kind: NodeKind) -> CZFResult<()> {
                     output.stderr,
                 ));
             }
+        }
+        _ => {
+            return Err(CZFError::GenericError(
+                "Only Source, Operator and Sink are accepted".to_string(),
+            ))
         }
     }
 

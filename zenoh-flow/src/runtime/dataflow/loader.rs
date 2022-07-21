@@ -246,7 +246,7 @@ impl Loader {
                 match Self::is_lib(&file_extension) {
                     true => {
                         let (lib, op) = unsafe { Self::load_lib_operator(file_path) }?;
-                        Ok(OperatorLoaded::try_new(record, Some(Arc::new(lib)), op)?)
+                        Ok(OperatorLoaded::new(record, Some(Arc::new(lib)), op))
                     }
                     _ => Ok(self.load_operator_from_extension(record, file_path)?),
                 }
@@ -290,7 +290,7 @@ impl Loader {
                 match Self::is_lib(&file_extension) {
                     true => {
                         let (lib, op) = unsafe { Self::load_lib_source(file_path) }?;
-                        Ok(SourceLoaded::try_new(record, Some(Arc::new(lib)), op)?)
+                        Ok(SourceLoaded::new(record, Some(Arc::new(lib)), op))
                     }
                     _ => Ok(self.load_source_from_extension(record, file_path)?),
                 }
@@ -333,7 +333,7 @@ impl Loader {
                 match Self::is_lib(&file_extension) {
                     true => {
                         let (lib, op) = unsafe { Self::load_lib_sink(file_path) }?;
-                        Ok(SinkLoaded::try_new(record, Some(Arc::new(lib)), op)?)
+                        Ok(SinkLoaded::new(record, Some(Arc::new(lib)), op))
                     }
                     _ => Ok(self.load_sink_from_extension(record, file_path)?),
                 }
@@ -496,7 +496,7 @@ impl Loader {
                 )?);
 
                 let (lib, op) = unsafe { Self::load_lib_operator(wrapper_file_path) }?;
-                Ok(OperatorLoaded::try_new(record, Some(Arc::new(lib)), op)?)
+                Ok(OperatorLoaded::new(record, Some(Arc::new(lib)), op))
             }
             _ => Err(ZFError::Unimplemented),
         }
@@ -537,7 +537,7 @@ impl Loader {
                 )?);
 
                 let (lib, op) = unsafe { Self::load_lib_source(wrapper_file_path) }?;
-                Ok(SourceLoaded::try_new(record, Some(Arc::new(lib)), op)?)
+                Ok(SourceLoaded::new(record, Some(Arc::new(lib)), op))
             }
             _ => Err(ZFError::Unimplemented),
         }
@@ -578,7 +578,7 @@ impl Loader {
                 )?);
 
                 let (lib, op) = unsafe { Self::load_lib_sink(wrapper_file_path) }?;
-                Ok(SinkLoaded::try_new(record, Some(Arc::new(lib)), op)?)
+                Ok(SinkLoaded::new(record, Some(Arc::new(lib)), op))
             }
             _ => Err(ZFError::Unimplemented),
         }

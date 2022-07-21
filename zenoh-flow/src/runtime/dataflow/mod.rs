@@ -24,12 +24,12 @@ use uuid::Uuid;
 use crate::model::connector::ZFConnectorRecord;
 use crate::model::dataflow::record::DataFlowRecord;
 use crate::model::dataflow::validator::DataflowValidator;
-use crate::model::link::{LinkDescriptor, LinkRecord, PortDescriptor};
+use crate::model::link::{LinkRecord, PortDescriptor};
 use crate::model::{InputDescriptor, OutputDescriptor};
 use crate::runtime::dataflow::node::{OperatorLoaded, SinkLoaded, SourceLoaded};
 use crate::runtime::RuntimeContext;
 use crate::{
-    DurationDescriptor, FlowId, NodeId, Operator, PortId, PortType, Sink, Source, ZFError, ZFResult,
+    DurationDescriptor, FlowId, NodeId, Operator, PortId, PortType, Sink, Source, ZFResult,
 };
 
 /// The data flow struct.
@@ -172,6 +172,7 @@ impl Dataflow {
                 id,
                 output: (output, self.counter).into(),
                 period: period.map(|dur_desc| dur_desc.to_duration()),
+                configuration: None,
                 source,
                 library: None,
             },
@@ -219,6 +220,9 @@ impl Dataflow {
                 outputs,
                 operator,
                 library: None,
+                // end_to_end_deadlines: vec![],
+                // ciclo: None,
+                configuration: None,
             },
         );
 
@@ -251,6 +255,8 @@ impl Dataflow {
                 // state: Arc::new(Mutex::new(state)),
                 sink,
                 library: None,
+                // end_to_end_deadlines: vec![],
+                configuration: None,
             },
         );
         self.counter += 1;

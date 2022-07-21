@@ -12,7 +12,7 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::{Context, Data, Message, PortId, ZFResult};
+use crate::{Data, Message, PortId, ZFResult};
 use async_std::sync::Arc;
 use futures::Future;
 use std::{any::Any, pin::Pin};
@@ -29,10 +29,11 @@ pub struct LinkSender {
 pub type CallbackTx =
     Arc<dyn Fn(dyn Any) -> Pin<Box<dyn Future<Output = Message> + Send + Sync>> + Send + Sync>;
 
-pub struct CallbackSender {
-    pub(crate) sender: LinkSender,
-    pub(crate) callback: CallbackTx,
-}
+// #[derive(Clone)]
+// pub struct CallbackSender {
+//     pub(crate) sender: LinkSender,
+//     pub(crate) callback: CallbackTx,
+// }
 
 /// The Zenoh Flow link receiver.
 /// A wrapper over a flume Receiver, that receives `Arc<T>` and the associated
@@ -47,10 +48,11 @@ pub type CallbackRx = Arc<
     dyn Fn(Arc<dyn Any>, Message) -> Pin<Box<dyn Future<Output = ()> + Send + Sync>> + Send + Sync,
 >;
 
-pub struct CallbackReceiver {
-    pub(crate) receiver: LinkReceiver,
-    pub(crate) callback: CallbackRx,
-}
+// #[derive(Clone)]
+// pub struct CallbackReceiver {
+//     pub(crate) receiver: LinkReceiver,
+//     pub(crate) callback: CallbackRx,
+// }
 
 /// The output of the [`LinkReceiver<T>`](`LinkReceiver<T>`), a tuple
 /// containing the `PortId` and `Arc<T>`.
@@ -75,12 +77,12 @@ impl LinkReceiver {
         Box::pin(__recv(self))
     }
 
-    pub fn into_callback(self, context: &mut Context, callback: CallbackRx) {
-        context.callback_receivers.push(CallbackReceiver {
-            receiver: self,
-            callback,
-        })
-    }
+    // pub fn into_callback(self, context: &mut Context, callback: CallbackRx) {
+    //     context.callback_receivers.push(CallbackReceiver {
+    //         receiver: self,
+    //         callback,
+    //     })
+    // }
 
     /// Discards the message
     ///
@@ -113,12 +115,12 @@ impl LinkSender {
         Ok(self.sender.send_async(data).await?)
     }
 
-    pub fn into_callback(self, context: &mut Context, callback: CallbackTx) {
-        context.callback_senders.push(CallbackSender {
-            sender: self,
-            callback,
-        })
-    }
+    // pub fn into_callback(self, context: &mut Context, callback: CallbackTx) {
+    //     context.callback_senders.push(CallbackSender {
+    //         sender: self,
+    //         callback,
+    //     })
+    // }
 
     /// Returns the sender occupation.
     pub fn len(&self) -> usize {
@@ -247,8 +249,7 @@ where
     }
 }
 
-/// The `AsyncCallbackSender` wraps the `LinkSender` and the
-/// `AsyncCallbackTx`.
+/// The `AsyncCallbackSender` wraps the `LinkSender` and the `AsyncCallbackTx`.
 ///
 /// It is used to trigger the user callback with the given schedule.
 pub struct AsyncCallbackSender {
@@ -268,9 +269,7 @@ impl AsyncCallbackSender {
         let ts = uhlc::Timestamp::new(uhlc::NTP64(0u64), uhlc::ID::new(1, [0u8; 16]));
 
         // FIXME
-        let msg = Message::from_node_output(crate::NodeOutput::Data(data), ts, vec![], vec![]);
+        let msg = Message::from_node_output(crate::NodeOutput::Data(data), ts);
         self.tx.send(Arc::new(msg)).await
     }
 }
-
-//

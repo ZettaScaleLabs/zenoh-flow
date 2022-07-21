@@ -12,16 +12,15 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use super::{Runner, RunnerKind};
+use super::{Runnable, RunnerKind};
 use crate::async_std::sync::{Arc, Mutex};
-use crate::runtime::dataflow::instance::link::{LinkReceiver, LinkSender};
+use crate::runtime::dataflow::instance::link::LinkSender;
 use crate::runtime::message::Message;
-use crate::runtime::InstanceContext;
+use crate::runtime::Context;
 use crate::{ControlMessage, NodeId, PortId, PortType, ZFError, ZFResult};
 use async_std::task;
 use async_trait::async_trait;
 use futures::prelude::*;
-use std::collections::HashMap;
 use zenoh::net::protocol::io::SplitBuffer;
 use zenoh::query::*;
 use zenoh::*;
@@ -30,7 +29,7 @@ use zenoh::*;
 #[derive(Clone)]
 pub struct ZenohReplay {
     pub(crate) id: NodeId,
-    pub(crate) context: InstanceContext,
+    pub(crate) context: Context,
     pub(crate) node_id: NodeId,
     pub(crate) port_id: PortId,
     pub(crate) port_type: PortType,
@@ -47,7 +46,7 @@ impl ZenohReplay {
     /// It fails if the ports are not connected correctly.
     pub fn try_new(
         id: NodeId,
-        context: InstanceContext,
+        context: Context,
         node_id: NodeId,
         port_id: PortId,
         port_type: PortType,
@@ -100,57 +99,59 @@ impl ZenohReplay {
 }
 
 #[async_trait]
-impl Runner for ZenohReplay {
+impl Runnable for ZenohReplay {
     fn get_id(&self) -> NodeId {
         self.id.clone()
     }
+
     fn get_kind(&self) -> RunnerKind {
         RunnerKind::Source
     }
-    async fn add_output(&self, output: LinkSender) -> ZFResult<()> {
-        (*self.links.lock().await).push(output);
-        Ok(())
-    }
 
-    async fn add_input(&self, _input: LinkReceiver) -> ZFResult<()> {
-        Err(ZFError::SourceDoNotHaveInputs)
-    }
-
-    // async fn clean(&self) -> ZFResult<()> {
+    // async fn add_output(&self, output: LinkSender) -> ZFResult<()> {
+    //     (*self.links.lock().await).push(output);
     //     Ok(())
     // }
 
-    fn get_outputs(&self) -> HashMap<PortId, PortType> {
-        let mut outputs = HashMap::with_capacity(1);
-        outputs.insert(self.port_id.clone(), self.port_type.clone());
-        outputs
-    }
+    // async fn add_input(&self, _input: LinkReceiver) -> ZFResult<()> {
+    //     Err(ZFError::SourceDoNotHaveInputs)
+    // }
 
-    fn get_inputs(&self) -> HashMap<PortId, PortType> {
-        HashMap::with_capacity(0)
-    }
+    // async fn clean(self) -> ZFResult<()> {
+    //     Ok(())
+    // }
 
-    async fn get_outputs_links(&self) -> HashMap<PortId, Vec<LinkSender>> {
-        let mut outputs = HashMap::with_capacity(1);
-        outputs.insert(self.port_id.clone(), self.links.lock().await.clone());
-        outputs
-    }
+    // fn get_outputs(&self) -> HashMap<PortId, PortType> {
+    //     let mut outputs = HashMap::with_capacity(1);
+    //     outputs.insert(self.port_id.clone(), self.port_type.clone());
+    //     outputs
+    // }
 
-    async fn take_input_links(&self) -> HashMap<PortId, LinkReceiver> {
-        HashMap::with_capacity(0)
-    }
+    // fn get_inputs(&self) -> HashMap<PortId, PortType> {
+    //     HashMap::with_capacity(0)
+    // }
 
-    async fn start_recording(&self) -> ZFResult<String> {
-        Err(ZFError::Unsupported)
-    }
+    // async fn get_outputs_links(&self) -> HashMap<PortId, Vec<LinkSender>> {
+    //     let mut outputs = HashMap::with_capacity(1);
+    //     outputs.insert(self.port_id.clone(), self.links.lock().await.clone());
+    //     outputs
+    // }
 
-    async fn stop_recording(&self) -> ZFResult<String> {
-        Err(ZFError::Unsupported)
-    }
+    // async fn take_input_links(&self) -> HashMap<PortId, LinkReceiver> {
+    //     HashMap::with_capacity(0)
+    // }
 
-    async fn is_recording(&self) -> bool {
-        false
-    }
+    // async fn start_recording(&self) -> ZFResult<String> {
+    //     Err(ZFError::Unsupported)
+    // }
+
+    // async fn stop_recording(&self) -> ZFResult<String> {
+    //     Err(ZFError::Unsupported)
+    // }
+
+    // async fn is_recording(&self) -> bool {
+    //     false
+    // }
 
     async fn is_running(&self) -> bool {
         *self.is_running.lock().await

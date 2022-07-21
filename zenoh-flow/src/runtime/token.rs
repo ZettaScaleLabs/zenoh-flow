@@ -12,8 +12,7 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::runtime::deadline::E2EDeadlineMiss;
-use crate::{Data, DataMessage, LoopContext, PortId};
+use crate::{Data, DataMessage, PortId};
 use std::collections::HashMap;
 use uhlc::Timestamp;
 
@@ -95,15 +94,15 @@ impl DataToken {
         &self.data.timestamp
     }
 
-    /// Gets a slice with all `E2EDeadlinesMiss` for this token.
-    pub fn get_missed_end_to_end_deadlines(&self) -> &[E2EDeadlineMiss] {
-        &self.data.missed_end_to_end_deadlines
-    }
+    // /// Gets a slice with all `E2EDeadlinesMiss` for this token.
+    // pub fn get_missed_end_to_end_deadlines(&self) -> &[E2EDeadlineMiss] {
+    //     &self.data.missed_end_to_end_deadlines
+    // }
 
-    /// Gets a slice with all `LoopContext` for this token.
-    pub fn get_loop_contexts(&self) -> &[LoopContext] {
-        self.data.get_loop_contexts()
-    }
+    // /// Gets a slice with all `LoopContext` for this token.
+    // pub fn get_loop_contexts(&self) -> &[LoopContext] {
+    //     self.data.get_loop_contexts()
+    // }
 }
 
 /// The token representing the input.

@@ -13,9 +13,7 @@
 //
 
 use crate::async_std::sync::Arc;
-use crate::runtime::dataflow::instance::link::{
-    CallbackReceiver, CallbackSender, LinkReceiver, LinkSender,
-};
+use crate::runtime::dataflow::instance::link::{LinkReceiver, LinkSender};
 use crate::serde::{Deserialize, Serialize};
 use crate::{ControlMessage, ZFData};
 use std::collections::HashMap;
@@ -36,22 +34,14 @@ pub type ZFResult<T> = Result<T, ZFError>;
 
 pub use crate::ZFError;
 
-/// Context is a structure provided by Zenoh Flow to access
-/// the execution context directly from the nodes.
-/// It contains the `mode` as usize.
-#[derive(Default)]
-pub struct Context {
-    pub(crate) callback_receivers: Vec<CallbackReceiver>,
-    pub(crate) callback_senders: Vec<CallbackSender>,
-}
-
 /// The Zenoh Flow data.
+///
 /// It is an `enum` that can contain both the serialized data (if received from
-/// the network, or from nodes not written in Rust),
-/// or the actual `Typed` data as [`ZFData`](`ZFData`).
+/// the network, or from nodes not written in Rust), or the actual `Typed` data
+/// as [`ZFData`](`ZFData`).
+///
 /// The `Typed` data is never serialized directly when sending over Zenoh
 /// or to an operator not written in Rust.
-///
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Data {
     /// Serialized data, coming either from Zenoh of from non-rust node.
@@ -193,9 +183,9 @@ impl Data {
 // }
 
 /// Represents the output of a node.
-/// A node can either send `Data` or `Control`
-/// Where the first is a [`Data`](`Data`) and the latter
-/// a [`ControlMessage`](`ControlMessage`).
+///
+/// A node can either send `Data` or `Control` Where the first is a
+/// [`Data`](`Data`) and the latter a [`ControlMessage`](`ControlMessage`).
 ///
 ///
 /// *NOTE:* Handling of control messages is not yet implemented.
@@ -207,8 +197,10 @@ pub enum NodeOutput {
     Control(ControlMessage),
 }
 
+// TODO Implement iterator?
+#[derive(Clone, Debug)]
 pub struct Inputs {
-    pub(crate) hmap: HashMap<PortId, LinkReceiver>,
+    pub(crate) hmap: HashMap<PortId, Vec<LinkReceiver>>,
 }
 
 impl Inputs {
@@ -218,13 +210,28 @@ impl Inputs {
         }
     }
 
-    pub fn get(&self, port_id: &str) -> Option<&LinkReceiver> {
+    pub fn get(&self, port_id: &str) -> Option<&Vec<LinkReceiver>> {
         self.hmap.get(port_id)
+    }
+
+    pub fn remove(&mut self, port_id: &str) -> Option<Vec<LinkReceiver>> {
+        self.hmap.remove(port_id)
+    }
+
+    pub(crate) fn add(&mut self, rx: LinkReceiver) {
+        let port_id = rx.id();
+        if let Some(receivers) = self.hmap.get_mut(&port_id) {
+            receivers.push(rx);
+        } else {
+            self.hmap.insert(port_id, vec![rx]);
+        }
     }
 }
 
+// TODO Implement iterator?
+#[derive(Clone)]
 pub struct Outputs {
-    pub(crate) hmap: HashMap<PortId, LinkSender>,
+    pub(crate) hmap: HashMap<PortId, Vec<LinkSender>>,
 }
 
 impl Outputs {
@@ -234,8 +241,21 @@ impl Outputs {
         }
     }
 
-    pub fn get(&self, port_id: &str) -> Option<&LinkSender> {
+    pub fn get(&self, port_id: &str) -> Option<&Vec<LinkSender>> {
         self.hmap.get(port_id)
+    }
+
+    pub fn remove(&mut self, port_id: &str) -> Option<Vec<LinkSender>> {
+        self.hmap.remove(port_id)
+    }
+
+    pub(crate) fn add(&mut self, tx: LinkSender) {
+        let port_id = tx.id();
+        if let Some(senders) = self.hmap.get_mut(&port_id) {
+            senders.push(tx);
+        } else {
+            self.hmap.insert(port_id, vec![tx]);
+        }
     }
 }
 

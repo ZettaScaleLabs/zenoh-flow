@@ -12,7 +12,6 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::model::link::PortDescriptor;
 use crate::serde::{Deserialize, Serialize};
 use crate::{NodeId, RuntimeId};
 

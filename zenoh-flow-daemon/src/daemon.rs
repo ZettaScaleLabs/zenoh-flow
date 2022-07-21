@@ -571,6 +571,7 @@ impl Runtime for Daemon {
 
         Ok(dfr)
     }
+
     async fn clean(&self, record_id: Uuid) -> ZFResult<DataFlowRecord> {
         log::info!("Cleaning for Instance UUID: {}", record_id);
 
@@ -580,45 +581,45 @@ impl Runtime for Daemon {
             Some(mut dfg) => {
                 // Calling finalize on all nodes of a the graph.
 
-                let mut sources = dfg.get_sources();
-                for id in sources.drain(..) {
-                    dfg.clean_node(&id).await.map_or_else(
-                        |e| {
-                            log::error!("Unable to clean source {}, got error: {}", &id, e);
-                        },
-                        |_| (),
-                    );
-                }
+                // let mut sources = dfg.get_sources();
+                // for id in sources.drain(..) {
+                //     dfg.clean_node(&id).await.map_or_else(
+                //         |e| {
+                //             log::error!("Unable to clean source {}, got error: {}", &id, e);
+                //         },
+                //         |_| (),
+                //     );
+                // }
 
-                let mut sinks = dfg.get_sinks();
-                for id in sinks.drain(..) {
-                    dfg.clean_node(&id).await.map_or_else(
-                        |e| {
-                            log::error!("Unable to clean sink {}, got error: {}", &id, e);
-                        },
-                        |_| (),
-                    );
-                }
+                // let mut sinks = dfg.get_sinks();
+                // for id in sinks.drain(..) {
+                //     dfg.clean_node(&id).await.map_or_else(
+                //         |e| {
+                //             log::error!("Unable to clean sink {}, got error: {}", &id, e);
+                //         },
+                //         |_| (),
+                //     );
+                // }
 
-                let mut operators = dfg.get_operators();
-                for id in operators.drain(..) {
-                    dfg.clean_node(&id).await.map_or_else(
-                        |e| {
-                            log::error!("Unable to operator source {}, got error: {}", &id, e);
-                        },
-                        |_| (),
-                    );
-                }
+                // let mut operators = dfg.get_operators();
+                // for id in operators.drain(..) {
+                //     dfg.clean_node(&id).await.map_or_else(
+                //         |e| {
+                //             log::error!("Unable to operator source {}, got error: {}", &id, e);
+                //         },
+                //         |_| (),
+                //     );
+                // }
 
-                let mut connectors = dfg.get_connectors();
-                for id in connectors.drain(..) {
-                    dfg.clean_node(&id).await.map_or_else(
-                        |e| {
-                            log::error!("Unable to clean connector {}, got error: {}", &id, e);
-                        },
-                        |_| (),
-                    );
-                }
+                // let mut connectors = dfg.get_connectors();
+                // for id in connectors.drain(..) {
+                //     dfg.clean_node(&id).await.map_or_else(
+                //         |e| {
+                //             log::error!("Unable to clean connector {}, got error: {}", &id, e);
+                //         },
+                //         |_| (),
+                //     );
+                // }
 
                 let record = self
                     .store
@@ -659,23 +660,23 @@ impl Runtime for Daemon {
 
         // remote start
         for client in rt_clients.iter() {
-            client.start(record_id).await??;
+            client.start_instance(record_id).await??;
         }
 
         if is_also_local {
             // self start
-            Runtime::start(self, record_id).await?;
+            Runtime::start_instance(self, record_id).await?;
         }
 
-        // remote start sources
-        for client in rt_clients.iter() {
-            client.start_sources(record_id).await??;
-        }
+        // // remote start sources
+        // for client in rt_clients.iter() {
+        //     client.start_sources(record_id).await??;
+        // }
 
-        if is_also_local {
-            // self start sources
-            Runtime::start_sources(self, record_id).await?;
-        }
+        // if is_also_local {
+        //     // self start sources
+        //     Runtime::start_sources(self, record_id).await?;
+        // }
 
         log::info!("Started Instance UUID: {}", record_id);
 
@@ -701,24 +702,24 @@ impl Runtime for Daemon {
             rt_clients.push(client);
         }
 
-        // remote stop sources
-        for client in rt_clients.iter() {
-            client.stop_sources(record_id).await??;
-        }
+        // // remote stop sources
+        // for client in rt_clients.iter() {
+        //     client.stop_sources(record_id).await??;
+        // }
 
-        // local stop sources
-        if is_also_local {
-            self.stop_sources(record_id).await?;
-        }
+        // // local stop sources
+        // if is_also_local {
+        //     self.stop_sources(record_id).await?;
+        // }
 
         // remote stop
         for client in rt_clients.iter() {
-            client.stop(record_id).await??;
+            client.stop_instance(record_id).await??;
         }
 
         // local stop
         if is_also_local {
-            Runtime::stop(self, record_id).await?;
+            Runtime::stop_instance(self, record_id).await?;
         }
 
         log::info!("Stopped Instance UUID: {}", record_id);
@@ -726,147 +727,148 @@ impl Runtime for Daemon {
         Ok(record)
     }
 
-    async fn start(&self, record_id: Uuid) -> ZFResult<()> {
-        log::info!(
-            "Starting nodes (not sources) for Instance UUID: {}",
-            record_id
-        );
+    // async fn start(&self, record_id: Uuid) -> ZFResult<()> {
+    //     log::info!(
+    //         "Starting nodes (not sources) for Instance UUID: {}",
+    //         record_id
+    //     );
 
-        let mut _state = self.state.lock().await;
+    //     let mut _state = self.state.lock().await;
 
-        let mut rt_status = self
-            .store
-            .get_runtime_status(&self.ctx.runtime_uuid)
-            .await?;
+    //     let mut rt_status = self
+    //         .store
+    //         .get_runtime_status(&self.ctx.runtime_uuid)
+    //         .await?;
 
-        match _state.graphs.get_mut(&record_id) {
-            Some(mut instance) => {
-                let mut sinks = instance.get_sinks();
-                for id in sinks.drain(..) {
-                    instance.start_node(&id).await?;
-                    rt_status.running_sinks += 1;
-                }
+    //     match _state.graphs.get_mut(&record_id) {
+    //         Some(mut instance) => {
+    //             let mut sinks = instance.get_sinks();
+    //             for id in sinks.drain(..) {
+    //                 instance.start_node(&id).await?;
+    //                 rt_status.running_sinks += 1;
+    //             }
 
-                let mut operators = instance.get_operators();
-                for id in operators.drain(..) {
-                    instance.start_node(&id).await?;
-                    rt_status.running_operators += 1;
-                }
+    //             let mut operators = instance.get_operators();
+    //             for id in operators.drain(..) {
+    //                 instance.start_node(&id).await?;
+    //                 rt_status.running_operators += 1;
+    //             }
 
-                let mut connectors = instance.get_connectors();
-                for id in connectors.drain(..) {
-                    instance.start_node(&id).await?;
-                    rt_status.running_connectors += 1;
-                }
+    //             let mut connectors = instance.get_connectors();
+    //             for id in connectors.drain(..) {
+    //                 instance.start_node(&id).await?;
+    //                 rt_status.running_connectors += 1;
+    //             }
 
-                self.store
-                    .add_runtime_status(&self.ctx.runtime_uuid, &rt_status)
-                    .await?;
+    //             self.store
+    //                 .add_runtime_status(&self.ctx.runtime_uuid, &rt_status)
+    //                 .await?;
 
-                Ok(())
-            }
-            None => Err(ZFError::InstanceNotFound(record_id)),
-        }
-    }
-    async fn start_sources(&self, record_id: Uuid) -> ZFResult<()> {
-        log::info!("Starting sources for Instance UUID: {}", record_id);
+    //             Ok(())
+    //         }
+    //         None => Err(ZFError::InstanceNotFound(record_id)),
+    //     }
+    // }
+    // async fn start_sources(&self, record_id: Uuid) -> ZFResult<()> {
+    //     log::info!("Starting sources for Instance UUID: {}", record_id);
 
-        let mut _state = self.state.lock().await;
+    //     let mut _state = self.state.lock().await;
 
-        let mut rt_status = self
-            .store
-            .get_runtime_status(&self.ctx.runtime_uuid)
-            .await?;
+    //     let mut rt_status = self
+    //         .store
+    //         .get_runtime_status(&self.ctx.runtime_uuid)
+    //         .await?;
 
-        match _state.graphs.get_mut(&record_id) {
-            Some(mut instance) => {
-                let mut sources = instance.get_sources();
-                for id in sources.drain(..) {
-                    instance.start_node(&id).await?;
-                    rt_status.running_sources += 1;
-                }
+    //     match _state.graphs.get_mut(&record_id) {
+    //         Some(mut instance) => {
+    //             let mut sources = instance.get_sources();
+    //             for id in sources.drain(..) {
+    //                 instance.start_node(&id).await?;
+    //                 rt_status.running_sources += 1;
+    //             }
 
-                rt_status.running_flows += 1;
+    //             rt_status.running_flows += 1;
 
-                self.store
-                    .add_runtime_status(&self.ctx.runtime_uuid, &rt_status)
-                    .await?;
+    //             self.store
+    //                 .add_runtime_status(&self.ctx.runtime_uuid, &rt_status)
+    //                 .await?;
 
-                Ok(())
-            }
-            None => Err(ZFError::InstanceNotFound(record_id)),
-        }
-    }
-    async fn stop(&self, record_id: Uuid) -> ZFResult<()> {
-        log::info!(
-            "Stopping nodes (not sources) for Instance UUID: {}",
-            record_id
-        );
+    //             Ok(())
+    //         }
+    //         None => Err(ZFError::InstanceNotFound(record_id)),
+    //     }
+    // }
+    // async fn stop(&self, record_id: Uuid) -> ZFResult<()> {
+    //     log::info!(
+    //         "Stopping nodes (not sources) for Instance UUID: {}",
+    //         record_id
+    //     );
 
-        let mut _state = self.state.lock().await;
+    //     let mut _state = self.state.lock().await;
 
-        let mut rt_status = self
-            .store
-            .get_runtime_status(&self.ctx.runtime_uuid)
-            .await?;
+    //     let mut rt_status = self
+    //         .store
+    //         .get_runtime_status(&self.ctx.runtime_uuid)
+    //         .await?;
 
-        match _state.graphs.get_mut(&record_id) {
-            Some(mut instance) => {
-                let mut sinks = instance.get_sinks();
-                for id in sinks.drain(..) {
-                    instance.stop_node(&id).await?;
-                    rt_status.running_sinks -= 1;
-                }
+    //     match _state.graphs.get_mut(&record_id) {
+    //         Some(mut instance) => {
+    //             let mut sinks = instance.get_sinks();
+    //             for id in sinks.drain(..) {
+    //                 instance.stop_node(&id).await?;
+    //                 rt_status.running_sinks -= 1;
+    //             }
 
-                let mut operators = instance.get_operators();
-                for id in operators.drain(..) {
-                    instance.stop_node(&id).await?;
-                    rt_status.running_operators -= 1;
-                }
+    //             let mut operators = instance.get_operators();
+    //             for id in operators.drain(..) {
+    //                 instance.stop_node(&id).await?;
+    //                 rt_status.running_operators -= 1;
+    //             }
 
-                let mut connectors = instance.get_connectors();
-                for id in connectors.drain(..) {
-                    instance.stop_node(&id).await?;
-                    rt_status.running_connectors -= 1;
-                }
+    //             let mut connectors = instance.get_connectors();
+    //             for id in connectors.drain(..) {
+    //                 instance.stop_node(&id).await?;
+    //                 rt_status.running_connectors -= 1;
+    //             }
 
-                self.store
-                    .add_runtime_status(&self.ctx.runtime_uuid, &rt_status)
-                    .await?;
+    //             self.store
+    //                 .add_runtime_status(&self.ctx.runtime_uuid, &rt_status)
+    //                 .await?;
 
-                Ok(())
-            }
-            None => Err(ZFError::InstanceNotFound(record_id)),
-        }
-    }
-    async fn stop_sources(&self, record_id: Uuid) -> ZFResult<()> {
-        log::info!("Stopping sources for Instance UUID: {}", record_id);
+    //             Ok(())
+    //         }
+    //         None => Err(ZFError::InstanceNotFound(record_id)),
+    //     }
+    // }
+    // async fn stop_sources(&self, record_id: Uuid) -> ZFResult<()> {
+    //     log::info!("Stopping sources for Instance UUID: {}", record_id);
 
-        let mut _state = self.state.lock().await;
-        let mut rt_status = self
-            .store
-            .get_runtime_status(&self.ctx.runtime_uuid)
-            .await?;
+    //     let mut _state = self.state.lock().await;
+    //     let mut rt_status = self
+    //         .store
+    //         .get_runtime_status(&self.ctx.runtime_uuid)
+    //         .await?;
 
-        match _state.graphs.get_mut(&record_id) {
-            Some(mut instance) => {
-                let mut sources = instance.get_sources();
-                for id in sources.drain(..) {
-                    instance.stop_node(&id).await?;
-                    rt_status.running_sources -= 1;
-                }
+    //     match _state.graphs.get_mut(&record_id) {
+    //         Some(mut instance) => {
+    //             let mut sources = instance.get_sources();
+    //             for id in sources.drain(..) {
+    //                 instance.stop_node(&id).await?;
+    //                 rt_status.running_sources -= 1;
+    //             }
 
-                rt_status.running_flows -= 1;
+    //             rt_status.running_flows -= 1;
 
-                self.store
-                    .add_runtime_status(&self.ctx.runtime_uuid, &rt_status)
-                    .await?;
+    //             self.store
+    //                 .add_runtime_status(&self.ctx.runtime_uuid, &rt_status)
+    //                 .await?;
 
-                Ok(())
-            }
-            None => Err(ZFError::InstanceNotFound(record_id)),
-        }
-    }
+    //             Ok(())
+    //         }
+    //         None => Err(ZFError::InstanceNotFound(record_id)),
+    //     }
+    // }
+
     async fn start_node(&self, instance_id: Uuid, node: String) -> ZFResult<()> {
         let mut _state = self.state.lock().await;
         let mut rt_status = self
@@ -879,6 +881,7 @@ impl Runtime for Daemon {
             None => Err(ZFError::InstanceNotFound(instance_id)),
         }
     }
+
     async fn stop_node(&self, instance_id: Uuid, node: String) -> ZFResult<()> {
         let mut _state = self.state.lock().await;
         let mut rt_status = self
@@ -938,7 +941,7 @@ impl Runtime for Daemon {
 
         match _state.graphs.get_mut(&instance_id) {
             Some(mut instance) => {
-                if !(instance.is_node_running(&source_id).await?) {
+                if !(instance.is_node_running(&source_id)?) {
                     let replay_id = instance.start_replay(&source_id, key_expr).await?;
                     Ok(replay_id)
                 } else {
@@ -978,6 +981,7 @@ impl Runtime for Daemon {
     ) -> ZFResult<()> {
         Err(ZFError::Unimplemented)
     }
+
     async fn check_operator_compatibility(
         &self,
         operator: SimpleOperatorDescriptor,

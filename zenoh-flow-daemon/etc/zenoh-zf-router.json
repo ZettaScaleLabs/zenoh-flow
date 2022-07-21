@@ -13,29 +13,47 @@
 //
 
 {
-    "listen":{
-        "endpoints":["tcp/0.0.0.0:7887"]
+    "listen": {
+        "endpoints": ["tcp/0.0.0.0:7887"]
     },
-    "plugins_search_dirs":["/usr/lib/"],
-    "plugins":{
-        "storage_manager":{
-        "required":true,
-        "storages":{
-            "zfrpc":{
-                "key_expr":"/zf/runtime/**",
-                "volume": "memory"
+    "plugins_search_dirs": ["/usr/lib/"],
+    "plugins": {
+        "rest" : {
+            "http_port": 8000,
+        },
+        "storage_manager": {
+            "required": true,
+            "volumes": {
+                "influxdb": {
+                    "url": "http://demo.zenoh.io:8086",
+                    "private": {
+                        "username": "AnAdminUser",
+                        "password": "Freemason-Shank1-Oil-Buckshot"
+                    }
+                }
             },
-            "zf":{
-                "key_expr":"/zenoh-flow/**",
-                "volume": "memory"
-            }
-            // ,
-            // "replay":{
-            //     "key_expr":"/zf/record/**",
-            //     "volume":"influxdb",
-            //     "url":"http://localhost:8086",
-            //     "db":"zf_log_example",
-            // }
+            "storages": {
+                "zfrpc": {
+                    "key_expr":"/zf/runtime/**",
+                    "volume": "memory"
+                },
+                "zf": {
+                    "key_expr":"/zenoh-flow/**",
+                    "volume": "memory"
+                },
+                "demo": {
+                    "key_expr": "/pylot/**",
+                    "volume": {
+                        "id": "influxdb",
+                        "db": "pylot_demo",
+                        "create_db": true,
+                        "on_closure": "drop_db",
+                        "private": {
+                            "username": "Zenoh-Flow-Pylot",
+                            "password": "Pronounce-Tint-Griminess-Chemist0"
+                        }
+                    }
+                }
             }
         }
     }

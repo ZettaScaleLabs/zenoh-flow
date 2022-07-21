@@ -12,11 +12,9 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::model::deadline::E2EDeadlineRecord;
 use crate::model::link::PortRecord;
-use crate::model::loops::LoopDescriptor;
 use crate::model::node::{OperatorRecord, SinkRecord, SourceRecord};
-use crate::{NodeId, Operator, PortId, PortType, Sink, Source, ZFResult};
+use crate::{Configuration, NodeId, Operator, PortId, PortType, Sink, Source};
 use async_std::sync::Arc;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -32,31 +30,24 @@ use libloading::Library;
 pub struct SourceLoaded {
     pub(crate) id: NodeId,
     pub(crate) output: PortRecord,
+    // pub(crate) output: PortDescriptor,
+    pub(crate) configuration: Option<Configuration>,
     pub(crate) period: Option<Duration>,
     pub(crate) source: Arc<dyn Source>,
     pub(crate) library: Option<Arc<Library>>,
 }
 
 impl SourceLoaded {
-    /// Creates and initialzes a `Source`.
-    /// The state is stored within the `SourceLoaded` in order to be used
-    /// when calling the Source's callbacks.
-    ///
-    /// # Errors
-    /// An error variant is returned in case of:
-    /// - fails to initialize
-    pub fn try_new(
-        record: SourceRecord,
-        lib: Option<Arc<Library>>,
-        source: Arc<dyn Source>,
-    ) -> ZFResult<Self> {
-        Ok(Self {
+    pub fn new(record: SourceRecord, lib: Option<Arc<Library>>, source: Arc<dyn Source>) -> Self {
+        Self {
             id: record.id,
             output: record.output,
             period: record.period.map(|dur_desc| dur_desc.to_duration()),
             source,
             library: lib,
-        })
+            // end_to_end_deadlines: vec![],
+            configuration: record.configuration,
+        }
     }
 }
 
@@ -67,23 +58,19 @@ pub struct OperatorLoaded {
     pub(crate) id: NodeId,
     pub(crate) inputs: HashMap<PortId, PortType>,
     pub(crate) outputs: HashMap<PortId, PortType>,
+    pub(crate) configuration: Option<Configuration>,
+    // pub(crate) local_deadline: Option<Duration>,
+    // pub(crate) ciclo: Option<LoopDescriptor>,
     pub(crate) operator: Arc<dyn Operator>,
     pub(crate) library: Option<Arc<Library>>,
 }
 
 impl OperatorLoaded {
-    /// Creates and initialzes an `Operator`.
-    /// The state is stored within the `OperatorLoaded` in order to be used
-    /// when calling the Operators's callbacks.
-    ///
-    /// # Errors
-    /// An error variant is returned in case of:
-    /// - fails to initialize
-    pub fn try_new(
+    pub fn new(
         record: OperatorRecord,
         lib: Option<Arc<Library>>,
         operator: Arc<dyn Operator>,
-    ) -> ZFResult<Self> {
+    ) -> Self {
         let inputs: HashMap<PortId, PortType> = record
             .inputs
             .into_iter()
@@ -96,13 +83,16 @@ impl OperatorLoaded {
             .map(|desc| (desc.port_id, desc.port_type))
             .collect();
 
-        Ok(Self {
+        Self {
             id: record.id,
             inputs,
             outputs,
             operator,
             library: lib,
-        })
+            // end_to_end_deadlines: vec![],
+            // ciclo: record.ciclo,
+            configuration: record.configuration,
+        }
     }
 }
 
@@ -112,28 +102,21 @@ impl OperatorLoaded {
 pub struct SinkLoaded {
     pub(crate) id: NodeId,
     pub(crate) input: PortRecord,
+    // pub(crate) input: PortDescriptor,
+    pub(crate) configuration: Option<Configuration>,
     pub(crate) sink: Arc<dyn Sink>,
     pub(crate) library: Option<Arc<Library>>,
 }
 
 impl SinkLoaded {
-    /// Creates and initialzes a `Sink`.
-    /// The state is stored within the `SinkLoaded` in order to be used
-    /// when calling the Sink's callbacks.
-    ///
-    /// # Errors
-    /// An error variant is returned in case of:
-    /// - fails to initialize
-    pub fn try_new(
-        record: SinkRecord,
-        lib: Option<Arc<Library>>,
-        sink: Arc<dyn Sink>,
-    ) -> ZFResult<Self> {
-        Ok(Self {
+    pub fn new(record: SinkRecord, lib: Option<Arc<Library>>, sink: Arc<dyn Sink>) -> Self {
+        Self {
             id: record.id,
             input: record.input,
             sink,
             library: lib,
-        })
+            // end_to_end_deadlines: vec![],
+            configuration: record.configuration,
+        }
     }
 }

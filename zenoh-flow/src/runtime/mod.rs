@@ -28,6 +28,7 @@ use crate::{
 use async_std::sync::Arc;
 use uuid::Uuid;
 
+// use self::dataflow::instance::link::{CallbackReceiver, CallbackSender};
 use self::dataflow::loader::LoaderConfig;
 use crate::runtime::dataflow::loader::Loader;
 use crate::runtime::message::ControlMessage;
@@ -39,8 +40,8 @@ use znrpc_macros::znservice;
 use zrpc::zrpcresult::{ZRPCError, ZRPCResult};
 
 pub mod dataflow;
-pub mod deadline;
-pub mod loops;
+// pub mod deadline;
+// pub mod loops;
 pub mod message;
 pub mod resources;
 pub mod token;
@@ -60,10 +61,12 @@ pub struct RuntimeContext {
 
 /// The context of a Zenoh Flow graph instance.
 #[derive(Clone)]
-pub struct InstanceContext {
+pub struct Context {
     pub flow_id: FlowId,
     pub instance_id: Uuid,
     pub runtime: RuntimeContext,
+    // pub(crate) callback_receivers: Vec<CallbackReceiver>,
+    // pub(crate) callback_senders: Vec<CallbackSender>,
 }
 
 /// This function maps a [`FlattenDataFlowDescriptor`](`FlattenDataFlowDescriptor`) into
@@ -313,45 +316,45 @@ pub trait Runtime {
     /// - unable to clean
     async fn stop_instance(&self, record_id: Uuid) -> ZFResult<DataFlowRecord>;
 
-    /// Starts the sinks, connectors, and operators for the given record.
-    ///
-    /// # Errors
-    /// An error variant is returned in case of:
-    /// - error on zenoh-rpc
-    /// - record not found
-    /// - record already started
-    async fn start(&self, record_id: Uuid) -> ZFResult<()>;
+    // /// Starts the sinks, connectors, and operators for the given record.
+    // ///
+    // /// # Errors
+    // /// An error variant is returned in case of:
+    // /// - error on zenoh-rpc
+    // /// - record not found
+    // /// - record already started
+    // async fn start(&self, record_id: Uuid) -> ZFResult<()>;
 
-    /// Starts the sources for the given record.
-    /// Note that this should be called only after the `start(record)` has returned
-    /// successfully otherwise data may be lost.
-    ///
-    /// # Errors
-    /// An error variant is returned in case of:
-    /// - error on zenoh-rpc
-    /// - record not found
-    /// - sources already started
-    async fn start_sources(&self, record_id: Uuid) -> ZFResult<()>;
+    // /// Starts the sources for the given record.
+    // /// Note that this should be called only after the `start(record)` has returned
+    // /// successfully otherwise data may be lost.
+    // ///
+    // /// # Errors
+    // /// An error variant is returned in case of:
+    // /// - error on zenoh-rpc
+    // /// - record not found
+    // /// - sources already started
+    // async fn start_sources(&self, record_id: Uuid) -> ZFResult<()>;
 
-    /// Stops the sinks, connectors, and operators for the given record.
-    /// Note that this should be called after the `stop_sources(record)` has returned
-    /// successfully otherwise data may be lost.
-    ///
-    /// # Errors
-    /// An error variant is returned in case of:
-    /// - error on zenoh-rpc
-    /// - record not found
-    /// - record already stopped
-    async fn stop(&self, record_id: Uuid) -> ZFResult<()>;
+    // /// Stops the sinks, connectors, and operators for the given record.
+    // /// Note that this should be called after the `stop_sources(record)` has returned
+    // /// successfully otherwise data may be lost.
+    // ///
+    // /// # Errors
+    // /// An error variant is returned in case of:
+    // /// - error on zenoh-rpc
+    // /// - record not found
+    // /// - record already stopped
+    // async fn stop(&self, record_id: Uuid) -> ZFResult<()>;
 
-    /// Stops the sources for the given record.
-    ///
-    /// # Errors
-    /// An error variant is returned in case of:
-    /// - error on zenoh-rpc
-    /// - record not found
-    /// - sources already stopped
-    async fn stop_sources(&self, record_id: Uuid) -> ZFResult<()>;
+    // /// Stops the sources for the given record.
+    // ///
+    // /// # Errors
+    // /// An error variant is returned in case of:
+    // /// - error on zenoh-rpc
+    // /// - record not found
+    // /// - sources already stopped
+    // async fn stop_sources(&self, record_id: Uuid) -> ZFResult<()>;
 
     /// Starts the given graph node for the given instance.
     /// A graph node can be a source, a sink, a connector, or an operator.

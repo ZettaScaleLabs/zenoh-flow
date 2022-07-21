@@ -421,6 +421,9 @@ async fn main() {
                     };
                     (metadata_graph, metadata_arch, yml_descriptor)
                 }
+
+                // FIXME I don’t exactly know what I’m supposed to do here.
+                _ => return,
             };
             println!(
                 "{} Node {} - Kind {}",
