@@ -39,8 +39,9 @@ impl std::fmt::Display for ZFConnectorKind {
 pub struct ZFConnectorRecord {
     pub kind: ZFConnectorKind,
     pub id: NodeId,
+    pub uid: u32,
     pub resource: String,
-    pub link_id: PortRecord,
+    pub port: PortRecord,
     pub runtime: RuntimeId,
 }
 

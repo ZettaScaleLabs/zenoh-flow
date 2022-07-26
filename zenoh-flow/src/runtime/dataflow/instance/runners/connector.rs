@@ -15,6 +15,7 @@
 use crate::async_std::sync::{Arc, Mutex};
 use crate::model::connector::ZFConnectorRecord;
 use crate::runtime::dataflow::instance::link::{LinkReceiver, LinkSender};
+use crate::runtime::dataflow::instance::link_internal::LinkSenderInternal;
 use crate::runtime::dataflow::instance::runners::{Runner, RunnerKind};
 use crate::runtime::InstanceContext;
 use crate::{Inputs, Message, NodeId, Outputs, ZFError, ZFResult};
@@ -47,7 +48,7 @@ impl ZenohSender {
         record: ZFConnectorRecord,
         mut inputs: Inputs,
     ) -> ZFResult<Self> {
-        let port_id = record.link_id.port_id.clone();
+        let port_id = record.port.port_id.clone();
         let mut links = inputs.remove(&port_id).ok_or_else(|| {
             ZFError::IOError(format!(
                 "Link < {} > was not created for Connector < {} >.",
@@ -231,7 +232,7 @@ pub struct ZenohReceiver {
     pub(crate) record: ZFConnectorRecord,
     pub(crate) is_running: Arc<Mutex<bool>>,
     pub(crate) key_expr: ExprId,
-    pub(crate) link: Arc<Mutex<Option<LinkSender>>>,
+    pub(crate) link: Arc<Mutex<Option<LinkSenderInternal>>>,
 }
 
 impl ZenohReceiver {
@@ -245,7 +246,7 @@ impl ZenohReceiver {
         record: ZFConnectorRecord,
         mut outputs: Outputs,
     ) -> ZFResult<Self> {
-        let port_id = record.link_id.port_id.clone();
+        let port_id = record.port.port_id.clone();
         let mut links = outputs.remove(&port_id).ok_or_else(|| {
             ZFError::IOError(format!(
                 "Link < {} > was not created for Connector < {} >.",
@@ -309,7 +310,7 @@ impl Runner for ZenohReceiver {
                     let de: Message = bincode::deserialize(&msg.value.payload.contiguous())
                         .map_err(|_| ZFError::DeseralizationError)?;
                     log::trace!("ZenohSender - OUT =>{:?} ", de);
-                    link.send(Arc::new(de)).await?;
+                    // link.send(Arc::new(de)).await?;
                 }
             }
 

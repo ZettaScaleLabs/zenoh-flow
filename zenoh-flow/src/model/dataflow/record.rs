@@ -245,11 +245,14 @@ impl DataFlowRecord {
                         "sender-{}-{}-{}-{}",
                         &self.flow, &self.uuid, &l.from.node, &l.from.output
                     );
+                    let uid = self.counter;
+                    self.counter += 1;
                     let sender = ZFConnectorRecord {
                         kind: ZFConnectorKind::Sender,
                         id: sender_id.clone().into(),
+                        uid,
                         resource: z_resource_name.clone(),
-                        link_id: PortRecord {
+                        port: PortRecord {
                             uid: self.counter,
                             port_id: l.from.output.clone(),
                             port_type: from_type,
@@ -282,11 +285,15 @@ impl DataFlowRecord {
                     "receiver-{}-{}-{}-{}",
                     &self.flow, &self.uuid, &l.to.node, &l.to.input
                 );
+
+                let uid = self.counter;
+                self.counter += 1;
                 let receiver = ZFConnectorRecord {
                     kind: ZFConnectorKind::Receiver,
                     id: receiver_id.clone().into(),
+                    uid,
                     resource: z_resource_name.clone(),
-                    link_id: PortRecord {
+                    port: PortRecord {
                         uid: self.counter,
                         port_id: l.to.input.clone(),
                         port_type: to_type,

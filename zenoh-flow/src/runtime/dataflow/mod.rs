@@ -23,7 +23,7 @@ use uuid::Uuid;
 use crate::model::connector::ZFConnectorRecord;
 use crate::model::dataflow::record::DataFlowRecord;
 use crate::model::dataflow::validator::DataflowValidator;
-use crate::model::link::{LinkRecord, PortDescriptor};
+use crate::model::link::{LinkRecord, PortDescriptor, PortRecord};
 use crate::model::{InputDescriptor, OutputDescriptor};
 use crate::runtime::dataflow::node::{OperatorLoaded, SinkLoaded, SourceLoaded};
 use crate::runtime::RuntimeContext;
@@ -160,12 +160,16 @@ impl Dataflow {
     ) -> ZFResult<()> {
         self.validator.try_add_source(id.clone(), output.clone())?;
 
+        let uid = self.gen_uid();
+        let p_uid = self.gen_uid();
+
         self.sources.insert(
             id.clone(),
             SourceLoaded {
                 id,
+                uid,
                 configuration,
-                output: (output, self.counter).into(),
+                output: (output, p_uid).into(),
                 source,
                 library: None,
             },
@@ -195,19 +199,22 @@ impl Dataflow {
         self.validator
             .try_add_operator(id.clone(), &inputs, &outputs)?;
 
-        let inputs: HashMap<PortId, PortType> = inputs
+        let uid = self.gen_uid();
+
+        let inputs: HashMap<PortId, PortRecord> = inputs
             .into_iter()
-            .map(|desc| (desc.port_id, desc.port_type))
+            .map(|desc| (desc.port_id.clone(), (desc, self.gen_uid()).into()))
             .collect();
-        let outputs: HashMap<PortId, PortType> = outputs
+        let outputs: HashMap<PortId, PortRecord> = outputs
             .into_iter()
-            .map(|desc| (desc.port_id, desc.port_type))
+            .map(|desc| (desc.port_id.clone(), (desc, self.gen_uid()).into()))
             .collect();
 
         self.operators.insert(
             id.clone(),
             OperatorLoaded {
                 id,
+                uid,
                 configuration,
                 inputs,
                 outputs,
@@ -237,12 +244,16 @@ impl Dataflow {
     ) -> ZFResult<()> {
         self.validator.try_add_sink(id.clone(), input.clone())?;
 
+        let uid = self.gen_uid();
+        let p_uid = self.gen_uid();
+
         self.sinks.insert(
             id.clone(),
             SinkLoaded {
                 id,
+                uid,
                 configuration,
-                input: (input, self.counter).into(),
+                input: (input, p_uid).into(),
                 sink,
                 library: None,
             },
@@ -283,5 +294,11 @@ impl Dataflow {
         self.counter += 1;
 
         Ok(())
+    }
+
+    fn gen_uid(&mut self) -> u32 {
+        let id = self.counter;
+        self.counter += 1;
+        id
     }
 }

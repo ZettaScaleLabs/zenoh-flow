@@ -13,11 +13,12 @@
 //
 
 pub mod link;
+pub mod link_internal;
 pub mod runners;
 
 use crate::model::connector::ZFConnectorKind;
 use crate::model::link::LinkRecord;
-use crate::runtime::dataflow::instance::link::link;
+use crate::runtime::dataflow::instance::link::{link, LinkSender};
 use crate::runtime::dataflow::instance::runners::connector::{ZenohReceiver, ZenohSender};
 use crate::runtime::dataflow::instance::runners::operator::OperatorRunner;
 use crate::runtime::dataflow::instance::runners::sink::SinkRunner;
@@ -25,12 +26,24 @@ use crate::runtime::dataflow::instance::runners::source::SourceRunner;
 use crate::runtime::dataflow::instance::runners::RunnerKind;
 use crate::runtime::dataflow::Dataflow;
 use crate::runtime::InstanceContext;
-use crate::{Inputs, NodeId, Outputs, ZFError, ZFResult};
+use crate::{Inputs, Message, NodeId, Outputs, PortId, ZFError, ZFResult};
 use async_std::sync::Arc;
+
+use petgraph::dot::Dot;
+use petgraph::graph::NodeIndex;
+use petgraph::Directed;
 use std::collections::HashMap;
+use std::convert::TryFrom;
+use uhlc::{Timestamp, ID};
 use uuid::Uuid;
 
+use self::link_internal::LinkReceiverInternal;
 use self::runners::Runner;
+use futures::future::{AbortHandle, Abortable, Aborted};
+use futures::{future, Future};
+use petgraph::stable_graph::StableDiGraph;
+use petgraph::stable_graph::StableGraph;
+use async_std::task::JoinHandle;
 
 /// The instance of a data flow graph.
 /// It contains runtime information for the instance
@@ -38,6 +51,9 @@ use self::runners::Runner;
 pub struct DataflowInstance {
     pub(crate) context: InstanceContext,
     pub(crate) runners: HashMap<NodeId, Box<dyn Runner>>,
+    pub(crate) graph: StableDiGraph<u32, (u32, u32)>,
+    pub(crate) abort_handle: AbortHandle,
+    pub(crate) join_handle: JoinHandle<Result<(), Aborted>>,
 }
 
 /// Creates the [`Link`](`Link`) between the `nodes` using `links`.
@@ -48,12 +64,24 @@ pub struct DataflowInstance {
 fn create_links(
     nodes: &[NodeId],
     links: &[LinkRecord],
-) -> ZFResult<HashMap<NodeId, (Inputs, Outputs)>> {
+    nodes_ports_uids: &HashMap<NodeId, (u32, HashMap<PortId, u32>, HashMap<PortId, u32>)>,
+    graph: &mut StableDiGraph<u32, (u32, u32)>,
+    node_indexes: &HashMap<u32, NodeIndex<u32>>,
+) -> ZFResult<(
+    HashMap<NodeId, (Inputs, Outputs)>,
+    HashMap<(u32, u32), Vec<LinkSender>>,
+    HashMap<(u32, u32), LinkReceiverInternal>,
+)> {
     let mut io: HashMap<NodeId, (Inputs, Outputs)> = HashMap::with_capacity(nodes.len());
+    let mut lookup_table: HashMap<(u32, u32), Vec<(u32, u32)>> = HashMap::new();
+    let mut lookup_table_ch: HashMap<(u32, u32), Vec<LinkSender>> = HashMap::new();
+    let mut receivers: HashMap<(u32, u32), LinkReceiverInternal> = HashMap::new();
 
     for link_desc in links {
         let upstream_node = link_desc.from.node.clone();
         let downstream_node = link_desc.to.node.clone();
+        let upstream_port = link_desc.from.output.clone();
+        let downstream_port = link_desc.to.input.clone();
 
         // Nodes have been filtered based on their runtime. If the runtime of either one of the node
         // is not equal to that of the current runtime, the channels should not be created.
@@ -61,34 +89,97 @@ fn create_links(
             continue;
         }
 
-        let (tx, rx) = link(
-            None,
-            link_desc.from.output.clone(),
-            link_desc.to.input.clone(),
+        // Getting UIDs and NodeIndexes, creating the graph in petgraph
+
+        let (sender_uid, _, outputs) = nodes_ports_uids
+            .get(&upstream_node)
+            .ok_or(ZFError::NodeNotFound(upstream_node.clone()))?;
+        let sender_port_uid = outputs.get(&upstream_port).ok_or(ZFError::PortNotFound((
+            upstream_node.clone(),
+            upstream_port.clone(),
+        )))?;
+
+        let (receiver_uid, inputs, _) = nodes_ports_uids
+            .get(&downstream_node)
+            .ok_or(ZFError::NodeNotFound(downstream_node.clone()))?;
+        let receiver_port_uid = inputs.get(&downstream_port).ok_or(ZFError::PortNotFound((
+            downstream_node.clone(),
+            downstream_port.clone(),
+        )))?;
+
+        let upstream_index = node_indexes
+            .get(sender_uid)
+            .ok_or(ZFError::NodeNotFound(upstream_node.clone()))?;
+        let downstream_index = node_indexes
+            .get(receiver_uid)
+            .ok_or(ZFError::NodeNotFound(downstream_node.clone()))?;
+
+        log::error!("({sender_uid}:{sender_port_uid})=>({receiver_uid}:{receiver_port_uid}) | ({upstream_node}:{upstream_port}) => ({downstream_node}:{downstream_port})");
+
+        graph.add_edge(
+            *upstream_index,
+            *downstream_index,
+            (*sender_port_uid, *receiver_port_uid),
         );
 
+        let (itx, urx) = link(None, upstream_port.clone(), downstream_port.clone());
+
+        // lookup table update
+        match lookup_table.get_mut(&(*sender_uid, *sender_port_uid)) {
+            Some(v) => {
+                v.push((*receiver_uid, *receiver_port_uid));
+            }
+            None => {
+                let faces = vec![(*receiver_uid, *receiver_port_uid)];
+                lookup_table.insert((*sender_uid, *sender_port_uid), faces);
+            }
+        };
+
+        match lookup_table_ch.get_mut(&(*sender_uid, *sender_port_uid)) {
+            Some(v) => {
+                v.push(itx);
+            }
+            None => {
+                let txs = vec![itx];
+                lookup_table_ch.insert((*sender_uid, *sender_port_uid), txs);
+            }
+        };
+
+        log::error!("Lookup table {lookup_table:?}");
+        log::error!("Lookup table (Channels) {lookup_table_ch:?}");
+
+        //
+
+        let (utx, irx) = link_internal::link_internal(
+            None,
+            (*sender_uid, *sender_port_uid),
+            (*sender_uid, *sender_port_uid),
+        );
+
+        receivers.insert((*sender_uid, *sender_port_uid), irx);
+
         match io.get_mut(&upstream_node) {
-            Some((_, outputs)) => outputs.add(tx),
+            Some((_, outputs)) => outputs.add(upstream_port, utx),
             None => {
                 let mut outputs = Outputs::new();
                 let inputs = Inputs::new();
-                outputs.add(tx);
+                outputs.add(upstream_port, utx);
                 io.insert(upstream_node, (inputs, outputs));
             }
         }
 
         match io.get_mut(&downstream_node) {
-            Some((inputs, _)) => inputs.add(rx),
+            Some((inputs, _)) => inputs.add(urx),
             None => {
                 let outputs = Outputs::new();
                 let mut inputs = Inputs::new();
-                inputs.add(rx);
+                inputs.add(urx);
                 io.insert(downstream_node, (inputs, outputs));
             }
         }
     }
 
-    Ok(io)
+    Ok((io, lookup_table_ch, receivers))
 }
 
 impl DataflowInstance {
@@ -111,12 +202,89 @@ impl DataflowInstance {
                 + dataflow.connectors.len(),
         );
 
+        // Contains the node uids as well as its ports uids: node_uid, intputs, outputs
+        let mut nodes_ports_uids: HashMap<
+            NodeId,
+            (u32, HashMap<PortId, u32>, HashMap<PortId, u32>),
+        > = HashMap::new();
+
+        let mut node_indexes: HashMap<u32, NodeIndex<u32>> = HashMap::new();
+        let mut graph = StableGraph::<u32, (u32, u32)>::new();
+
         node_ids.append(&mut dataflow.sources.keys().cloned().collect::<Vec<_>>());
         node_ids.append(&mut dataflow.operators.keys().cloned().collect::<Vec<_>>());
         node_ids.append(&mut dataflow.sinks.keys().cloned().collect::<Vec<_>>());
         node_ids.append(&mut dataflow.connectors.keys().cloned().collect::<Vec<_>>());
 
-        let mut links = create_links(&node_ids, &dataflow.links)?;
+        // Populating hashmap and graph with uids
+        for (_, n) in &dataflow.sources {
+            let uid = n.uid;
+            let inputs = HashMap::new();
+            let mut outputs = HashMap::new();
+
+            outputs.insert(n.output.port_id.clone(), n.output.uid);
+
+            nodes_ports_uids.insert(n.id.clone(), (uid, inputs, outputs));
+
+            node_indexes.insert(uid, graph.add_node(uid));
+        }
+
+        for (_, n) in &dataflow.sinks {
+            let uid = n.uid;
+            let mut inputs = HashMap::new();
+            let outputs = HashMap::new();
+
+            inputs.insert(n.input.port_id.clone(), n.input.uid);
+
+            nodes_ports_uids.insert(n.id.clone(), (uid, inputs, outputs));
+            node_indexes.insert(uid, graph.add_node(uid));
+        }
+
+        for (_, n) in &dataflow.operators {
+            let uid = n.uid;
+            let mut inputs = HashMap::new();
+            let mut outputs = HashMap::new();
+
+            for (_, i) in &n.inputs {
+                inputs.insert(i.port_id.clone(), i.uid);
+            }
+            for (_, o) in &n.outputs {
+                outputs.insert(o.port_id.clone(), o.uid);
+            }
+
+            nodes_ports_uids.insert(n.id.clone(), (uid, inputs, outputs));
+            node_indexes.insert(uid, graph.add_node(uid));
+        }
+
+        for (_, n) in &dataflow.connectors {
+            let uid = n.uid;
+            let mut inputs = HashMap::new();
+            let mut outputs = HashMap::new();
+
+            match n.kind {
+                ZFConnectorKind::Receiver => {
+                    inputs.insert(n.port.port_id.clone(), n.port.uid);
+                }
+                ZFConnectorKind::Sender => {
+                    outputs.insert(n.port.port_id.clone(), n.port.uid);
+                }
+            }
+            nodes_ports_uids.insert(n.id.clone(), (uid, inputs, outputs));
+
+            node_indexes.insert(uid, graph.add_node(uid));
+        }
+        //
+
+        let (mut links, lookup_table, receivers) = create_links(
+            &node_ids,
+            &dataflow.links,
+            &nodes_ports_uids,
+            &mut graph,
+            &node_indexes,
+        )?;
+
+        let dot = Dot::new(&graph);
+        log::error!("{dot:?}");
 
         let context = InstanceContext {
             flow_id: dataflow.flow_id,
@@ -188,7 +356,58 @@ impl DataflowInstance {
             }
         }
 
-        Ok(Self { context, runners })
+        let c_context = context.clone();
+        //spawn forwarding task
+        let fwd_loop = async move {
+            //fake timestamping
+            let buf = [0x00, 0x00];
+            let id = ID::try_from(&buf[..1]).unwrap();
+            let ts = Timestamp::new(uhlc::NTP64(0), id);
+
+            let mut links = Vec::with_capacity(receivers.len());
+
+            for r in receivers.values() {
+                links.push(r.recv());
+            }
+
+            loop {
+                match future::select_all(links).await {
+                    (Ok((uids, data)), _index, remaining) => {
+                        let data = Arc::try_unwrap(data).unwrap();
+                        match lookup_table.get(&uids) {
+                            Some(outs) => {
+                                let msg = Arc::new(Message::from_serdedata(data, ts));
+                                for s in outs {
+                                    s.send(msg.clone()).await.unwrap();
+                                }
+                            }
+                            None => log::error!("The link {uids:?} is not connected downstream!!"),
+                        };
+                        links = remaining;
+                        links.push(receivers.get(&uids).unwrap().recv());
+                    }
+                    (Err(e), _index, remaining) => {
+                        let err_msg = format!(
+                            "[Instance FWD Loop: {}] Link returned an error: {:?}",
+                            c_context.instance_id, e
+                        );
+                        log::error!("{err_msg}");
+                        links = remaining;
+                    }
+                }
+            }
+        };
+
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        let join_handle = async_std::task::spawn(Abortable::new(fwd_loop, abort_registration));
+
+        Ok(Self {
+            context,
+            runners,
+            graph,
+            abort_handle,
+            join_handle,
+        })
     }
 
     /// Returns the instance's `Uuid`.
@@ -436,4 +655,10 @@ impl DataflowInstance {
     //     self.runners.remove(replay_id);
     //     Ok(())
     // }
+}
+
+impl Drop for DataflowInstance {
+    fn drop(&mut self) {
+        self.abort_handle.abort();
+    }
 }

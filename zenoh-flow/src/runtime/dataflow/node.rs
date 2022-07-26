@@ -28,6 +28,7 @@ use libloading::Library;
 /// This struct is then used within a `Runner` to actually run the source.
 pub struct SourceLoaded {
     pub(crate) id: NodeId,
+    pub(crate) uid: u32,
     pub(crate) configuration: Option<Configuration>,
     pub(crate) output: PortRecord,
     pub(crate) source: Arc<dyn Source>,
@@ -49,6 +50,7 @@ impl SourceLoaded {
     ) -> ZFResult<Self> {
         Ok(Self {
             id: record.id,
+            uid: record.uid,
             configuration: record.configuration,
             output: record.output,
             source,
@@ -62,9 +64,10 @@ impl SourceLoaded {
 /// This struct is then used within a `Runner` to actually run the operator.
 pub struct OperatorLoaded {
     pub(crate) id: NodeId,
+    pub(crate) uid: u32,
     pub(crate) configuration: Option<Configuration>,
-    pub(crate) inputs: HashMap<PortId, PortType>,
-    pub(crate) outputs: HashMap<PortId, PortType>,
+    pub(crate) inputs: HashMap<PortId, PortRecord>,
+    pub(crate) outputs: HashMap<PortId, PortRecord>,
     pub(crate) operator: Arc<dyn Operator>,
     pub(crate) library: Option<Arc<Library>>,
 }
@@ -82,20 +85,21 @@ impl OperatorLoaded {
         lib: Option<Arc<Library>>,
         operator: Arc<dyn Operator>,
     ) -> ZFResult<Self> {
-        let inputs: HashMap<PortId, PortType> = record
+        let inputs: HashMap<PortId, PortRecord> = record
             .inputs
             .into_iter()
-            .map(|desc| (desc.port_id, desc.port_type))
+            .map(|desc| (desc.port_id.clone(), desc))
             .collect();
 
-        let outputs: HashMap<PortId, PortType> = record
+        let outputs: HashMap<PortId, PortRecord> = record
             .outputs
             .into_iter()
-            .map(|desc| (desc.port_id, desc.port_type))
+            .map(|desc| (desc.port_id.clone(), desc))
             .collect();
 
         Ok(Self {
             id: record.id,
+            uid: record.uid,
             configuration: record.configuration,
             inputs,
             outputs,
@@ -110,6 +114,7 @@ impl OperatorLoaded {
 /// This struct is then used within a `Runner` to actually run the sink.
 pub struct SinkLoaded {
     pub(crate) id: NodeId,
+    pub(crate) uid: u32,
     pub(crate) configuration: Option<Configuration>,
     pub(crate) input: PortRecord,
     pub(crate) sink: Arc<dyn Sink>,
@@ -131,6 +136,7 @@ impl SinkLoaded {
     ) -> ZFResult<Self> {
         Ok(Self {
             id: record.id,
+            uid: record.uid,
             input: record.input,
             sink,
             library: lib,

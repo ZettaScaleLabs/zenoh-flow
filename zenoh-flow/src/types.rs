@@ -14,6 +14,7 @@
 
 use crate::async_std::sync::Arc;
 use crate::runtime::dataflow::instance::link::{LinkReceiver, LinkSender};
+use crate::runtime::dataflow::instance::link_internal::LinkSenderInternal;
 use crate::serde::{Deserialize, Serialize};
 use crate::{ControlMessage, ZFData};
 use std::collections::HashMap;
@@ -374,7 +375,7 @@ impl Inputs {
 // TODO Implement iterator?
 #[derive(Clone)]
 pub struct Outputs {
-    pub(crate) hmap: HashMap<PortId, Vec<LinkSender>>,
+    pub(crate) hmap: HashMap<PortId, Vec<LinkSenderInternal>>,
 }
 
 impl Outputs {
@@ -384,16 +385,16 @@ impl Outputs {
         }
     }
 
-    pub fn get(&self, port_id: &str) -> Option<&Vec<LinkSender>> {
+    pub fn get(&self, port_id: &str) -> Option<&Vec<LinkSenderInternal>> {
         self.hmap.get(port_id)
     }
 
-    pub fn remove(&mut self, port_id: &str) -> Option<Vec<LinkSender>> {
+    pub fn remove(&mut self, port_id: &str) -> Option<Vec<LinkSenderInternal>> {
         self.hmap.remove(port_id)
     }
 
-    pub(crate) fn add(&mut self, tx: LinkSender) {
-        let port_id = tx.id();
+    pub(crate) fn add(&mut self, port_id: PortId, tx: LinkSenderInternal) {
+        // let port_id = tx.uids();
         if let Some(senders) = self.hmap.get_mut(&port_id) {
             senders.push(tx);
         } else {
