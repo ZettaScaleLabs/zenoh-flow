@@ -69,7 +69,7 @@ pub type DaemonResult<T> = Result<T, ErrorKind>;
 /// The Zenoh Flow error
 /// It contains mapping to most of the errors that could happen within
 /// Zenoh Flow and its dependencies.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Eq)]
 pub enum ErrorKind {
     GenericError,
     SerializationError,
@@ -82,7 +82,7 @@ pub enum ErrorKind {
     NotFound,
     Duplicate,
     MissingConfiguration,
-    ConfigurationError(String),
+    ConfigurationError,
     VersionMismatch,
     Disconnected,
     Uncompleted,

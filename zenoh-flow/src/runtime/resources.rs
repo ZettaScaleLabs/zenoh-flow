@@ -33,14 +33,18 @@ use async_std::pin::Pin;
 use async_std::stream::Stream;
 use async_std::task::{Context, Poll};
 use futures::StreamExt;
+use futures_lite::FutureExt;
 use pin_project_lite::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
 use std::convert::TryFrom;
 use std::sync::Arc;
+use uhlc::HLC;
 use uuid::Uuid;
 use zenoh::net::protocol::io::SplitBuffer;
 use zenoh::prelude::*;
 use zenoh::query::Reply;
+
+use super::Job;
 
 //NOTE: this should be pub(crate)
 
@@ -67,6 +71,21 @@ pub static KEY_INFO: &str = "info";
 pub static KEY_STATUS: &str = "status";
 /// Token for the leaf with configuration in the key expression.
 pub static KEY_CONFIGURATION: &str = "configuration";
+
+/// Token for job queue in the key expression.
+pub static KEY_JOB_QUEUE: &str = "job-queue";
+
+/// Token for the submitted jobs job queue in the key expression.
+pub static KEY_JOB_SUBMITTED: &str = "sumbitted";
+
+/// Token for the started jobs job queue in the key expression.
+pub static KEY_JOB_STARTED: &str = "started";
+
+/// Token for the done jobs job queue in the key expression.
+pub static KEY_JOB_DONE: &str = "done";
+
+/// Token for the failed jobs job queue in the key expression.
+pub static KEY_JOB_FAILED: &str = "failed";
 
 /// Generates the runtime info key expression.
 #[macro_export]
@@ -210,6 +229,85 @@ macro_rules! REG_GRAPH_SELECTOR {
     };
 }
 
+/// Generates the sumbitted jobs key expression (selector)
+#[macro_export]
+macro_rules! JQ_SUMBITTED_SEL {
+    ($prefix:expr, $rid:expr) => {
+        format!(
+            "{}/{}/{}/{}/{}/*",
+            $prefix,
+            $crate::runtime::resources::KEY_RUNTIMES,
+            $rid,
+            $crate::runtime::resources::KEY_JOB_QUEUE,
+            $crate::runtime::resources::KEY_JOB_SUBMITTED
+        )
+    };
+}
+
+/// Generates the sumbitted job key expression
+#[macro_export]
+macro_rules! JQ_SUMBITTED_JOB {
+    ($prefix:expr, $rid:expr, $jid: expr) => {
+        format!(
+            "{}/{}/{}/{}/{}/{}",
+            $prefix,
+            $crate::runtime::resources::KEY_RUNTIMES,
+            $rid,
+            $crate::runtime::resources::KEY_JOB_QUEUE,
+            $crate::runtime::resources::KEY_JOB_SUBMITTED,
+            $jid
+        )
+    };
+}
+
+/// Generates the started job key expression
+#[macro_export]
+macro_rules! JQ_STARTED_JOB {
+    ($prefix:expr, $rid:expr, $jid: expr) => {
+        format!(
+            "{}/{}/{}/{}/{}/{}",
+            $prefix,
+            $crate::runtime::resources::KEY_RUNTIMES,
+            $rid,
+            $crate::runtime::resources::KEY_JOB_QUEUE,
+            $crate::runtime::resources::KEY_JOB_STARTED,
+            $jid
+        )
+    };
+}
+
+/// Generates the done job key expression
+#[macro_export]
+macro_rules! JQ_DONE_JOB {
+    ($prefix:expr, $rid:expr, $jid: expr) => {
+        format!(
+            "{}/{}/{}/{}/{}/{}",
+            $prefix,
+            $crate::runtime::resources::KEY_RUNTIMES,
+            $rid,
+            $crate::runtime::resources::KEY_JOB_QUEUE,
+            $crate::runtime::resources::KEY_JOB_DONE,
+            $jid
+        )
+    };
+}
+
+/// Generates the done job key expression
+#[macro_export]
+macro_rules! JQ_FAILED_JOB {
+    ($prefix:expr, $rid:expr, $jid: expr) => {
+        format!(
+            "{}/{}/{}/{}/{}/{}",
+            $prefix,
+            $crate::runtime::resources::KEY_RUNTIMES,
+            $rid,
+            $crate::runtime::resources::KEY_JOB_QUEUE,
+            $crate::runtime::resources::KEY_JOB_FAILED,
+            $jid
+        )
+    };
+}
+
 /// Deserialize data from Zenoh storage.
 /// The format used depends on the features.
 /// It can be JSON (default), bincode or CBOR.
@@ -272,6 +370,8 @@ where
 }
 //
 
+// Streams conversions
+
 pin_project! {
     /// Custom stream to lister for Runtime Configuration changes.
     pub struct ZFRuntimeConfigStream {
@@ -316,6 +416,54 @@ impl Stream for ZFRuntimeConfigStream {
                 SampleKind::Delete => {
                     log::warn!("Received delete sample drop it");
                     Poll::Pending
+                }
+            },
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+pin_project! {
+    /// Custom stream to lister for Jobs.
+    /// Converts [`zenoh::Subscriber`][`zenoh::Subscriber`] to a stream of [`Job`](`Job`)
+    pub struct ZFJobStream {
+        #[pin]
+        sub: zenoh::subscriber::Subscriber<'static>,
+    }
+}
+
+impl ZFJobStream {
+    pub async fn close(self) -> Result<()> {
+        Ok(())
+    }
+}
+
+impl Stream for ZFJobStream {
+    type Item = Job;
+
+    #[inline(always)]
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        match self.sub.next().poll(cx) {
+            Poll::Ready(Some(sample)) => match sample.kind {
+                SampleKind::Put | SampleKind::Patch => match sample.value.encoding {
+                    Encoding::APP_OCTET_STREAM => {
+                        match deserialize_data::<Job>(&sample.value.payload.contiguous()) {
+                            Ok(info) => Poll::Ready(Some(info)),
+                            Err(_) => Poll::Ready(None),
+                        }
+                    }
+                    _ => {
+                        log::warn!(
+                            "Received sample with wrong encoding {:?}. Dropping",
+                            sample.value.encoding
+                        );
+                        Poll::Ready(None)
+                    }
+                },
+                SampleKind::Delete => {
+                    log::warn!("Received delete sample. Dropping.");
+                    Poll::Ready(None)
                 }
             },
             Poll::Ready(None) => Poll::Ready(None),
@@ -677,6 +825,77 @@ impl DataStore {
 
         self.z.delete(&path).await
     }
+
+    // Job Queue
+
+    /// Subscribes to the job queue of the given `rtid`
+    ///
+    /// # Errors
+    /// An error variant is returned in case of:
+    /// - zenoh subscribe fails
+    /// - fails to deserialize
+    pub async fn subscribe_sumbitted_jobs(&self, rtid: &Uuid) -> Result<ZFJobStream> {
+        let selector = JQ_SUMBITTED_SEL!(ROOT_STANDALONE, rtid);
+        self.z
+            .subscribe(&selector)
+            .await
+            .map(|sub| ZFJobStream { sub })
+    }
+
+    /// Submits the given [`Job`](`Job`) in the queue
+    ///
+    /// # Errors
+    /// An error variant is returned in case of:
+    /// - fails to serialize
+    /// - zenoh put fails
+    pub async fn add_submitted_job(&self, rtid: &Uuid, job: &Job) -> Result<()> {
+        let path = JQ_SUMBITTED_JOB!(ROOT_STANDALONE, rtid, &job.id);
+        let encoded_info = serialize_data(job)?;
+        self.z.put(&path, encoded_info).await
+    }
+
+    pub async fn del_submitted_job(&self, rtid: &Uuid, id: &Uuid) -> Result<()> {
+        let path = JQ_SUMBITTED_JOB!(ROOT_STANDALONE, rtid, id);
+        self.z.delete(&path).await
+    }
+
+    /// Sets as started the given [`Job`](`Job`) in the queue
+    ///
+    /// # Errors
+    /// An error variant is returned in case of:
+    /// - fails to serialize
+    /// - zenoh put fails
+    pub async fn add_started_job(&self, rtid: &Uuid, job: &Job) -> Result<()> {
+        let path = JQ_STARTED_JOB!(ROOT_STANDALONE, rtid, &job.id);
+        let encoded_info = serialize_data(job)?;
+        self.z.put(&path, encoded_info).await
+    }
+
+    /// Sets as completed the given [`Job`](`Job`) in the queue
+    ///
+    /// # Errors
+    /// An error variant is returned in case of:
+    /// - fails to serialize
+    /// - zenoh put fails
+    pub async fn add_done_job(&self, rtid: &Uuid, job: &Job) -> Result<()> {
+        let path = JQ_DONE_JOB!(ROOT_STANDALONE, rtid, &job.id);
+        let encoded_info = serialize_data(job)?;
+        self.z.put(&path, encoded_info).await
+    }
+
+    /// Sets as failed the given [`Job`](`Job`) in the queue
+    ///
+    /// # Errors
+    /// An error variant is returned in case of:
+    /// - fails to serialize
+    /// - zenoh put fails
+    pub async fn add_failed_job(&self, rtid: &Uuid, job: &Job) -> Result<()> {
+        let path = JQ_FAILED_JOB!(ROOT_STANDALONE, rtid, &job.id);
+        let encoded_info = serialize_data(job)?;
+        self.z.put(&path, encoded_info).await
+    }
+
+    // Helpers
 
     /// Helper function to get a generic data `T` and deserializing it
     /// from Zenoh.
