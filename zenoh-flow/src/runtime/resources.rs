@@ -372,7 +372,7 @@ where
 // Streams conversions
 
 pin_project! {
-    /// Custom stream to lister for Runtime Configuration changes.
+    /// Custom stream to listen for Runtime Configuration changes.
     pub struct ZFRuntimeConfigStream {
         #[pin]
         sample_stream: zenoh::subscriber::Subscriber<'static, flume::Receiver<Sample>>,
@@ -421,7 +421,7 @@ impl Stream for ZFRuntimeConfigStream {
 }
 
 pin_project! {
-    /// Custom stream to lister for Jobs.
+    /// Custom stream to listen for Jobs.
     /// Converts [`zenoh::Subscriber`][`zenoh::Subscriber`] to a stream of [`Job`](`Job`)
     pub struct ZFJobStream {
         #[pin]
