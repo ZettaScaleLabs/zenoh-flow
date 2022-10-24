@@ -26,32 +26,33 @@
 ///
 ///
 /// #[async_trait]
-/// impl Operator for MyOperator {
-///     async fn setup(
-///         &self,
-///         context: &mut Context,
-///         configuration: &Option<Configuration>,
-///         mut inputs: Inputs,
-///         mut outputs: Outputs,
-///     ) -> Result<Option<Box<dyn AsyncIteration>>> {
+/// impl OperatorFactoryTrait for MyOperator {
+/// async fn new_operator(
+///     &self,
+///     context: &mut Context,
+///     configuration: &Option<Configuration>,
+///     inputs: Inputs,
+///     outputs: Outputs,
+/// ) -> Result<Option<Arc<dyn Node>>> {
 ///         todo!()
 ///     }
 /// }
 ///
-/// export_operator!(register);
+/// export_operator_factory!(register);
 ///
-/// fn register() -> Result<Arc<dyn Operator>> {
-///    Ok(Arc::new(MyOperator) as Arc<dyn Operator>)
+/// fn register() -> Result<Arc<dyn OperatorFactoryTrait>> {
+///    Ok(Arc::new(MyOperator) as Arc<dyn OperatorFactoryTrait>)
 /// }
 /// ```
 ///
 #[macro_export]
-macro_rules! export_operator {
+macro_rules! export_operator_factory {
     ($register:expr) => {
         #[doc(hidden)]
         #[no_mangle]
-        pub static zfoperator_declaration: $crate::runtime::dataflow::loader::OperatorDeclaration =
-            $crate::runtime::dataflow::loader::OperatorDeclaration {
+        pub static zfoperator_factory_declaration:
+            $crate::runtime::dataflow::loader::NodeDeclaration<OperatorFactoryTrait> =
+            $crate::runtime::dataflow::loader::NodeDeclaration::<OperatorFactoryTrait> {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
                 register: $register,
@@ -73,32 +74,33 @@ macro_rules! export_operator {
 ///
 ///
 /// #[async_trait]
-/// impl Source for MySource {
-///     async fn setup(
-///         &self,
-///         _context: &mut Context,
-///         configuration: &Option<Configuration>,
-///         mut outputs: Outputs,
-///     ) -> Result<Option<Box<dyn AsyncIteration>>> {
+/// impl SourceFactoryTrait for MySource {
+///   async fn new_source(
+///       &self,
+///       context: &mut Context,
+///       configuration: &Option<Configuration>,
+///       outputs: Outputs,
+///   ) -> Result<Option<Arc<dyn Node>>> {
 ///         todo!()
 ///     }
 /// }
 ///
-/// export_source!(register);
+/// export_source_factory!(register);
 ///
-/// fn register() -> Result<Arc<dyn Source>> {
-///    Ok(Arc::new(MySource) as Arc<dyn Source>)
+/// fn register() -> Result<Arc<dyn SourceFactoryTrait>> {
+///    Ok(Arc::new(MySource) as Arc<dyn SourceFactoryTrait>)
 /// }
 ///
 /// ```
 ///
 #[macro_export]
-macro_rules! export_source {
+macro_rules! export_source_factory {
     ($register:expr) => {
         #[doc(hidden)]
         #[no_mangle]
-        pub static zfsource_declaration: $crate::runtime::dataflow::loader::SourceDeclaration =
-            $crate::runtime::dataflow::loader::SourceDeclaration {
+        pub static zfsource_factory_declaration:
+            $crate::runtime::dataflow::loader::NodeDeclaration<SourceFactoryTrait> =
+            $crate::runtime::dataflow::loader::NodeDeclaration::<SourceFactoryTrait> {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
                 register: $register,
@@ -120,37 +122,38 @@ macro_rules! export_source {
 ///
 ///
 /// #[async_trait]
-/// impl Sink for MySink {
-///     async fn setup(
-///         &self,
-///         _context: &mut Context,
-///         configuration: &Option<Configuration>,
-///         mut inputs: Inputs,
-///     ) -> Result<Option<Box<dyn AsyncIteration>>> {
+/// impl SinkFactoryTrait for MySink {
+///   async fn new_sink(
+///       &self,
+///       context: &mut Context,
+///       configuration: &Option<Configuration>,
+///       inputs: Inputs,
+///   ) -> Result<Option<Arc<dyn Node>>> {
 ///         todo!()
 ///     }
 /// }
 ///
-/// export_sink!(register);
+/// export_sink_factory!(register);
 ///
 ///
-/// fn register() -> Result<Arc<dyn Sink>> {
-///    Ok(Arc::new(MySink) as Arc<dyn Sink>)
+/// fn register() -> Result<Arc<dyn SinkFactoryTrait>> {
+///    Ok(Arc::new(MySink) as Arc<dyn SinkFactoryTrait>)
 /// }
 ///
 /// ```
 ///
 #[macro_export]
-macro_rules! export_sink {
+macro_rules! export_sink_factory {
     ($register:expr) => {
         #[doc(hidden)]
         #[no_mangle]
-        pub static zfsink_declaration: $crate::runtime::dataflow::loader::SinkDeclaration =
-            $crate::runtime::dataflow::loader::SinkDeclaration {
-                rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
-                core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-                register: $register,
-            };
+        pub static zfsink_factory_declaration: $crate::runtime::dataflow::loader::NodeDeclaration<
+            SinkFactoryTrait,
+        > = $crate::runtime::dataflow::loader::NodeDeclaration::<SinkFactoryTrait> {
+            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+            register: $register,
+        };
     };
 }
 

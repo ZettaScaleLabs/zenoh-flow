@@ -30,6 +30,7 @@ use uuid::Uuid;
 /// - `instance_id`: the generated unique identifier of this instanciation of the flow.
 ///
 /// The HLC is directly accessible thanks to a `Deref` implementation.
+#[derive(Clone)]
 pub struct Context {
     pub(crate) runtime_name: RuntimeId,
     pub(crate) runtime_uuid: Uuid,
@@ -43,11 +44,11 @@ pub struct Context {
 impl Context {
     pub(crate) fn new(instance_context: &InstanceContext) -> Self {
         Self {
-            runtime_name: Arc::clone(&instance_context.runtime.runtime_name),
+            runtime_name: instance_context.runtime.runtime_name.clone(),
             runtime_uuid: instance_context.runtime.runtime_uuid,
-            flow_name: Arc::clone(&instance_context.flow_id),
+            flow_name: instance_context.flow_id.clone(),
             instance_id: instance_context.instance_id,
-            hlc: Arc::clone(&instance_context.runtime.hlc),
+            hlc: instance_context.runtime.hlc.clone(),
             inputs_callbacks: vec![],
             outputs_callbacks: vec![],
         }
@@ -84,7 +85,7 @@ impl Context {
     /// Zenoh-Flow will execute the callback whenever new data is received. If additional
     /// constraints should be enforced, it is up to the developer to add them in the implementation
     /// of the callback (for instance, to add a minimum periodicity between consecutive executions).
-    pub fn register_input_callback(&mut self, input: Input, callback: Box<dyn InputCallback>) {
+    pub fn register_input_callback(&mut self, input: Input, callback: Arc<dyn InputCallback>) {
         self.inputs_callbacks
             .push(CallbackInput { input, callback })
     }
@@ -93,7 +94,7 @@ impl Context {
     ///
     /// Zenoh-Flow will continuously execute the callback so it is up to the developer to add
     /// constraints to the callback’s implementation (for instance, to make it periodic).
-    pub fn register_output_callback(&mut self, output: Output, callback: Box<dyn OutputCallback>) {
+    pub fn register_output_callback(&mut self, output: Output, callback: Arc<dyn OutputCallback>) {
         self.outputs_callbacks
             .push(CallbackOutput { output, callback })
     }

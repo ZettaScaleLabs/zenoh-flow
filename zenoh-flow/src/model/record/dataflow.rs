@@ -36,7 +36,7 @@ pub struct DataFlowRecord {
     pub operators: HashMap<NodeId, OperatorRecord>,
     pub sinks: HashMap<NodeId, SinkRecord>,
     pub sources: HashMap<NodeId, SourceRecord>,
-    pub connectors: Vec<ZFConnectorRecord>,
+    pub connectors: HashMap<NodeId, ZFConnectorRecord>,
     pub links: Vec<LinkRecord>,
     pub counter: u32,
 }
@@ -190,7 +190,7 @@ impl DataFlowRecord {
             };
 
             let from_type = match self.find_node_output_type(&l.from.node, &l.from.output) {
-                Some(t) => t,
+                Some(t) => t.clone(),
                 None => {
                     return Err(zferror!(ErrorKind::PortNotFound((
                         l.from.node.clone(),
@@ -211,13 +211,18 @@ impl DataFlowRecord {
                 }
             };
 
-            if from_type != &to_type
+            if from_type != to_type
                 && from_type.as_ref() != PORT_TYPE_ANY
                 && to_type.as_ref() != PORT_TYPE_ANY
             {
+                // NOTE `Arc::clone` for two reasons:
+                // - Clippy considers calls to `.clone()` as redundant but rustc complains if there
+                //   is no clone,
+                // - this is just a temporary fix as we will introduce proper types that will
+                //   implement Clone and (under the hood) use Arc::clone
                 return Err(zferror!(ErrorKind::PortTypeNotMatching((
-                    Arc::clone(from_type),
-                    Arc::clone(&to_type),
+                    Arc::clone(&from_type),
+                    Arc::clone(&to_type)
                 )))
                 .into());
             }
@@ -248,19 +253,18 @@ impl DataFlowRecord {
                 // We only create a sender if none was created for the same resource. The rationale
                 // is to avoid creating multiple publisher for the same resource in case an operator
                 // acts as a multiplexor.
-                if !self
-                    .connectors
-                    .iter()
-                    .any(|c| c.kind == ZFConnectorKind::Sender && c.resource == z_resource_name)
-                {
+                if !self.connectors.iter().any(|(_id, c)| {
+                    c.kind == ZFConnectorKind::Sender && c.resource == z_resource_name
+                }) {
                     // creating sender
-                    let sender_id = format!(
+                    let sender_id: NodeId = format!(
                         "sender-{}-{}-{}-{}",
                         &self.flow, &self.uuid, &l.from.node, &l.from.output
-                    );
+                    )
+                    .into();
                     let sender = ZFConnectorRecord {
                         kind: ZFConnectorKind::Sender,
-                        id: sender_id.clone().into(),
+                        id: sender_id.clone(),
                         resource: z_resource_name.clone(),
                         link_id: PortRecord {
                             uid: self.counter,
@@ -276,7 +280,7 @@ impl DataFlowRecord {
                     let link_sender = LinkDescriptor {
                         from: l.from.clone(),
                         to: InputDescriptor {
-                            node: sender_id.into(),
+                            node: sender_id.clone(),
                             input: l.from.output.clone(),
                         },
                         size: None,
@@ -285,19 +289,20 @@ impl DataFlowRecord {
                     };
 
                     // storing info in the dataflow record
-                    self.connectors.push(sender);
+                    self.connectors.insert(sender_id, sender);
                     self.links.push((link_sender, self.counter).into());
                     self.counter += 1;
                 }
 
                 // creating receiver
-                let receiver_id = format!(
+                let receiver_id: NodeId = format!(
                     "receiver-{}-{}-{}-{}",
                     &self.flow, &self.uuid, &l.to.node, &l.to.input
-                );
+                )
+                .into();
                 let receiver = ZFConnectorRecord {
                     kind: ZFConnectorKind::Receiver,
-                    id: receiver_id.clone().into(),
+                    id: receiver_id.clone(),
                     resource: z_resource_name.clone(),
                     link_id: PortRecord {
                         uid: self.counter,
@@ -312,7 +317,7 @@ impl DataFlowRecord {
                 // Creating link between receiver and node
                 let link_receiver = LinkDescriptor {
                     from: OutputDescriptor {
-                        node: receiver_id.into(),
+                        node: receiver_id.clone(),
                         output: l.to.input.clone(),
                     },
                     to: l.to.clone(),
@@ -322,7 +327,7 @@ impl DataFlowRecord {
                 };
 
                 // storing info in the data flow record
-                self.connectors.push(receiver);
+                self.connectors.insert(receiver_id, receiver);
                 self.links.push((link_receiver, self.counter).into());
                 self.counter += 1;
             }
@@ -356,9 +361,9 @@ impl TryFrom<(FlattenDataFlowDescriptor, Uuid)> for DataFlowRecord {
             operators: HashMap::with_capacity(operators.len()),
             sinks: HashMap::with_capacity(sinks.len()),
             sources: HashMap::with_capacity(sources.len()),
-            connectors: Vec::new(),
+            connectors: HashMap::new(),
             links: Vec::new(),
-            counter: 0u32,
+            counter: 0,
         };
 
         for o in operators.into_iter() {
