@@ -62,7 +62,7 @@ pub struct DaemonConfig {
     /// Uuid of the runtime, if None the machine id will be used.
     pub uuid: Option<Uuid>,
     /// Where to find the Zenoh configuration file
-    pub zenoh_config: String,
+    pub zenoh_config: Option<String>,
     /// Where to locate the extension files.
     pub extensions: String,
     /// The size of the worker pool.
@@ -106,6 +106,52 @@ impl TryFrom<DaemonConfig> for Daemon {
     fn try_from(config: DaemonConfig) -> std::result::Result<Self, Self::Error> {
         use zenoh::prelude::sync::*;
 
+        if let Some(zenoh_config) = &config.zenoh_config {
+            // Loading Zenoh configuration
+            let zconfig = get_zenoh_config(zenoh_config)?;
+
+            // Creates the zenoh session.
+            let session = Arc::new(zenoh::open(zconfig).res()?);
+
+            return Self::from_session_and_config(session, config);
+        }
+
+        bail!(
+            ErrorKind::ConfigurationError,
+            "zenoh_config is required when running as standalone daemon!!"
+        )
+    }
+}
+
+impl Daemon {
+    /// Creates a new `Daemon` from the given parameters.
+    pub fn new(
+        z: Arc<zenoh::Session>,
+        ctx: RuntimeContext,
+        config: RuntimeConfig,
+        pool_size: usize,
+    ) -> Self {
+        let store = DataStore::new(z.clone());
+
+        let runtime = Runtime::new(z, ctx.clone(), config.clone());
+
+        let c_runtime = runtime.clone();
+        let new_worker = Arc::new(move |id, rx, hlc| {
+            Box::new(Worker::new(id, rx, hlc, c_runtime)) as Box<dyn WorkerTrait>
+        });
+
+        let mut workers =
+            WorkerPool::new(pool_size, store, config.uuid, ctx.hlc.clone(), new_worker);
+        workers.start();
+
+        Self {
+            runtime,
+            worker_pool: Arc::new(RwLock::new(workers)),
+            ctx,
+        }
+    }
+
+    pub fn from_session_and_config(z: Arc<zenoh::Session>, config: DaemonConfig) -> ZFResult<Self> {
         // If Uuid is not specified uses machine id.
         let uuid = match &config.uuid {
             Some(u) => *u,
@@ -131,10 +177,6 @@ impl TryFrom<DaemonConfig> for Daemon {
             )
         }
 
-        // Loading Zenoh configuration
-        let zconfig = get_zenoh_config(&config.zenoh_config)?;
-
-        // Generates the loader configuration.
         let mut extensions = LoaderConfig::new();
 
         let ext_dir = Path::new(&config.extensions);
@@ -218,12 +260,8 @@ impl TryFrom<DaemonConfig> for Daemon {
             path: config.path,
             name,
             uuid,
-            zenoh: zconfig.clone(),
             loader: extensions.clone(),
         };
-
-        // Creates the zenoh session.
-        let session = Arc::new(zenoh::open(zconfig).res()?);
 
         // Creates the HLC.
         let uhlc_id = ID::try_from(uuid.as_bytes())
@@ -234,43 +272,14 @@ impl TryFrom<DaemonConfig> for Daemon {
         let loader = Arc::new(Loader::new(extensions));
 
         let ctx = RuntimeContext {
-            session: session.clone(),
+            session: z.clone(),
             hlc,
             loader,
             runtime_name: rt_config.name.clone().into(),
             runtime_uuid: uuid,
         };
 
-        Ok(Self::new(session, ctx, rt_config, pool_size))
-    }
-}
-
-impl Daemon {
-    /// Creates a new `Daemon` from the given parameters.
-    pub fn new(
-        z: Arc<zenoh::Session>,
-        ctx: RuntimeContext,
-        config: RuntimeConfig,
-        pool_size: usize,
-    ) -> Self {
-        let store = DataStore::new(z.clone());
-
-        let runtime = Runtime::new(z, ctx.clone(), config.clone());
-
-        let c_runtime = runtime.clone();
-        let new_worker = Arc::new(move |id, rx, hlc| {
-            Box::new(Worker::new(id, rx, hlc, c_runtime)) as Box<dyn WorkerTrait>
-        });
-
-        let mut workers =
-            WorkerPool::new(pool_size, store, config.uuid, ctx.hlc.clone(), new_worker);
-        workers.start();
-
-        Self {
-            runtime,
-            worker_pool: Arc::new(RwLock::new(workers)),
-            ctx,
-        }
+        Ok(Self::new(z, ctx, rt_config, pool_size))
     }
 
     /// The daemon run.
