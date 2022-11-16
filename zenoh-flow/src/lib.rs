@@ -53,7 +53,8 @@ pub use zfresult::{DaemonResult, ZFResult as Result};
 pub mod prelude {
 
     pub use crate::traits::{
-        DowncastAny, Node, OperatorFactoryTrait, SinkFactoryTrait, SourceFactoryTrait, ZFData,
+        DowncastAny, Node, Operator, OperatorFactoryTrait, Sink, SinkFactoryTrait, Source,
+        SourceFactoryTrait, ZFData,
     };
     pub use crate::types::{
         Configuration, Context, Data, DataMessage, Input, Inputs, Message, NodeId, Output, Outputs,

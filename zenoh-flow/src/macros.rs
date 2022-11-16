@@ -12,6 +12,58 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
+//TODO:docs
+#[macro_export]
+macro_rules! export_operator {
+    ($operator:expr) => {
+        #[doc(hidden)]
+        #[no_mangle]
+        pub static _zf_export_operator: $crate::runtime::dataflow::loader::NodeDeclaration<
+            Operator,
+        > = $crate::runtime::dataflow::loader::NodeDeclaration::<Operator> {
+            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+            register: |ctx, configuration, inputs, outputs| {
+                std::sync::Arc::new($factory::new(ctx, configuration, inputs, outputs))
+            },
+        };
+    };
+}
+
+//TODO:docs
+#[macro_export]
+macro_rules! export_sink {
+    ($operator:expr) => {
+        #[doc(hidden)]
+        #[no_mangle]
+        pub static _zf_export_sink: $crate::runtime::dataflow::loader::NodeDeclaration<Sink> =
+            $crate::runtime::dataflow::loader::NodeDeclaration::<Sink> {
+                rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+                core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+                register: |ctx, configuration, inputs, _| {
+                    std::sync::Arc::new($factory::new(ctx, configuration, inputs))
+                },
+            };
+    };
+}
+
+//TODO:docs
+#[macro_export]
+macro_rules! export_source {
+    ($operator:expr) => {
+        #[doc(hidden)]
+        #[no_mangle]
+        pub static _zf_export_source: $crate::runtime::dataflow::loader::NodeDeclaration<Source> =
+            $crate::runtime::dataflow::loader::NodeDeclaration::<Source> {
+                rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+                core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+                register: |ctx, configuration, _, outputs| {
+                    std::sync::Arc::new($factory::new(ctx, configuration, outputs))
+                },
+            };
+    };
+}
+
 /// This macros should be used in order to provide the symbols
 /// for the dynamic load of an Operator. Along with a register function
 ///

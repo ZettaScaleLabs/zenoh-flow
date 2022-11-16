@@ -13,6 +13,7 @@
 //
 
 use crate::model::record::{OperatorRecord, SinkRecord, SourceRecord};
+use crate::prelude::{Configuration, Context, Inputs, Outputs};
 use crate::traits;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -21,6 +22,82 @@ use std::sync::Arc;
 use libloading::os::unix::Library;
 #[cfg(target_family = "windows")]
 use libloading::Library;
+
+//
+use crate::zfresult::ZFResult;
+use futures::Future;
+use std::pin::Pin;
+
+pub trait AsyncNodeFactoryFn<T: ?Sized>: Send + Sync {
+    fn call(
+        &self,
+        ctx: &mut Context,
+        conf: &Option<Configuration>,
+        i: Inputs,
+        o: Outputs,
+    ) -> Pin<Box<dyn Future<Output = ZFResult<Option<Arc<T>>>> + Send + Sync + 'static>>;
+}
+
+impl<Fut, Fun, T: ?Sized> AsyncNodeFactoryFn<T> for Fun
+where
+    Fun: FnOnce(&mut Context, &Option<Configuration>, Inputs, Outputs) -> Fut + Sync + Send + Clone  ,
+    Fut: Future<Output = ZFResult<Option<Arc<T>>>> + Send + Sync + 'static,
+{
+    fn call(
+        &self,
+        ctx: &mut Context,
+        conf: &Option<Configuration>,
+        i: Inputs,
+        o: Outputs,
+    ) -> Pin<Box<dyn Future<Output = ZFResult<Option<Arc<T>>>> + Send + Sync + 'static>> {
+        Box::pin((self.clone())(ctx, conf, i, o))
+    }
+}
+
+
+pub type NodeFactoryFn<T> = Arc< dyn Fn(&mut Context, &Option<Configuration>, Inputs, Outputs) -> ZFResult<Option<Arc<T>>>  + Send + Sync >;
+
+
+pub(crate) struct NodeFactoryNew<U, T: ?Sized> {
+    pub(crate) record: U,
+    // pub(crate) factory: Arc<dyn AsyncNodeFactoryFn<T>>,
+    pub(crate) factory : NodeFactoryFn<T>,
+    _library: Option<Arc<Library>>,
+}
+
+impl<U, T: ?Sized> Deref for NodeFactoryNew<U, T> {
+    type Target = U;
+
+    fn deref(&self) -> &Self::Target {
+        &self.record
+    }
+}
+
+impl<U, T: traits::Node + ?Sized> NodeFactoryNew<U, T> {
+    /// Creates a NodeFactory without a `library`.
+    ///
+    /// This function is intended for internal use in order to create a data flow programmatically.
+    pub(crate) fn new_static(
+        record: U,
+        // factory: Arc<dyn AsyncNodeFactoryFn<T>>
+        factory: NodeFactoryFn<T>,
+    ) -> Self {
+        Self {
+            record,
+            factory,
+            _library: None,
+        }
+    }
+}
+
+/// A `SourceFactory` is a specialized `NodeFactory` generating Source.
+pub(crate) type SourceFactoryNew = NodeFactoryNew<SourceRecord, dyn traits::Source>;
+
+/// An `OperatorFactory` is a specialized `NodeFactory` generating Operator.
+pub(crate) type OperatorFactoryNew = NodeFactoryNew<OperatorRecord, dyn traits::Operator>;
+
+/// A `SinkFactory` is a specialized `NodeFactory` generating Sink.
+pub(crate) type SinkFactoryNew = NodeFactoryNew<SinkRecord, dyn traits::Sink>;
 
 /// A `NodeFactory` generates `Node`, i.e. objects that implement the `Node` trait.
 ///

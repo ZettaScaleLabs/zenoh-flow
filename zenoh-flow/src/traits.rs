@@ -85,6 +85,94 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
         Self: Sized;
 }
 
+//TODO: docs
+#[async_trait]
+pub trait Source: Send + Sync {
+    fn new(
+        context: &mut Context,
+        configuration: &Option<Configuration>,
+        outputs: Outputs,
+    ) -> ZFResult<Option<Self>>
+    where
+        Self: Sized;
+
+    async fn iteration(&self) -> ZFResult<()>;
+}
+
+pub(crate) struct CastSource(Arc<dyn Source>);
+
+impl From<Arc<dyn Source>> for CastSource {
+    fn from(other: Arc<dyn Source>) -> Self {
+        Self(other)
+    }
+}
+
+#[async_trait]
+impl Node for CastSource {
+    async fn iteration(&self) -> ZFResult<()> {
+        self.0.iteration().await
+    }
+}
+
+//TODO: docs
+#[async_trait]
+pub trait Sink: Send + Sync {
+    fn new(
+        context: &mut Context,
+        configuration: &Option<Configuration>,
+        inputs: Inputs,
+    ) -> ZFResult<Option<Self>>
+    where
+        Self: Sized;
+
+    async fn iteration(&self) -> ZFResult<()>;
+}
+
+pub(crate) struct CastSink(Arc<dyn Sink>);
+
+impl From<Arc<dyn Sink>> for CastSink {
+    fn from(other: Arc<dyn Sink>) -> Self {
+        Self(other)
+    }
+}
+
+#[async_trait]
+impl Node for CastSink {
+    async fn iteration(&self) -> ZFResult<()> {
+        self.0.iteration().await
+    }
+}
+
+//TODO: docs
+#[async_trait]
+pub trait Operator: Send + Sync {
+    fn new(
+        context: &mut Context,
+        configuration: &Option<Configuration>,
+        inputs: Inputs,
+        outputs: Outputs,
+    ) -> ZFResult<Option<Self>>
+    where
+        Self: Sized;
+
+    async fn iteration(&self) -> ZFResult<()>;
+}
+
+pub(crate) struct CastOperator(Arc<dyn Operator>);
+
+impl From<Arc<dyn Operator>> for CastOperator {
+    fn from(other: Arc<dyn Operator>) -> Self {
+        Self(other)
+    }
+}
+
+#[async_trait]
+impl Node for CastOperator {
+    async fn iteration(&self) -> ZFResult<()> {
+        self.0.iteration().await
+    }
+}
+
 /// A `Node` is defined by its `iteration` that is repeatedly called by Zenoh-Flow.
 ///
 /// This trait takes an immutable reference to `self` so as to not impact performance. To keep a
@@ -124,6 +212,27 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 #[async_trait]
 pub trait Node: Send + Sync {
     async fn iteration(&self) -> ZFResult<()>;
+}
+
+#[async_trait]
+impl Node for dyn Source {
+    async fn iteration(&self) -> ZFResult<()> {
+        Source::iteration(self).await
+    }
+}
+
+#[async_trait]
+impl Node for dyn Sink {
+    async fn iteration(&self) -> ZFResult<()> {
+        Sink::iteration(self).await
+    }
+}
+
+#[async_trait]
+impl Node for dyn Operator {
+    async fn iteration(&self) -> ZFResult<()> {
+        Operator::iteration(self).await
+    }
 }
 
 /// For a `Context`, a `Configuration` and a set of `Outputs`, produce a new *Source*.
