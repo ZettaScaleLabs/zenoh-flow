@@ -279,8 +279,191 @@ impl DataFlowInstance {
             runners,
         })
     }
-}
 
+    /// Given a `DataFlow` and an `HLC`, try to instantiate the data flow by generating all the
+    /// nodes (via their factories) and all the connections --- _running on the daemon_.
+    ///
+    /// # Error
+    ///
+    /// This function can return an error if:
+    /// - some links are missing which resulted in some missing connections,
+    /// - a factory failed to generate a node.
+    pub async fn try_instantiate_new(data_flow: DataFlow, hlc: Arc<HLC>) -> Result<Self> {
+        let instance_context = Arc::new(InstanceContext {
+            flow_id: data_flow.flow.clone(),
+            instance_id: data_flow.uuid,
+            runtime: data_flow.context.clone(),
+        });
+
+        let mut node_ids: Vec<NodeId> = Vec::with_capacity(
+            data_flow.source_factories_new.len()
+                + data_flow.operator_factories_new.len()
+                + data_flow.sink_factories_new.len()
+                + data_flow.connectors.len(),
+        );
+
+        node_ids.append(
+            &mut data_flow
+                .source_factories_new
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        node_ids.append(
+            &mut data_flow
+                .operator_factories_new
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        node_ids.append(
+            &mut data_flow
+                .sink_factories_new
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        node_ids.append(&mut data_flow.connectors.keys().cloned().collect::<Vec<_>>());
+
+        let mut links = create_links(&node_ids, &data_flow.links, hlc.clone())?;
+
+        let ctx = Context::new(&instance_context);
+
+        let mut runners = HashMap::with_capacity(data_flow.source_factories_new.len());
+        for (source_id, source_factory) in &data_flow.source_factories_new {
+            let mut context = ctx.clone();
+            let (_, outputs) = links.remove(source_id).ok_or_else(|| {
+                zferror!(
+                    ErrorKind::IOError,
+                    "Links for Source < {} > were not created.",
+                    &source_id
+                )
+            })?;
+
+            let source = (source_factory
+                .factory)
+                // .call(
+                (
+                    &mut context,
+                    &source_factory.configuration,
+                    HashMap::new(),
+                    outputs,
+                )?;
+                // .await?;
+
+            let source: Option<Arc<dyn Node>> = match source {
+                Some(source) => Some(Arc::new(crate::traits::CastSource::from(source))),
+                None => None,
+            };
+
+            // .await?;
+            let runner = Runner::new(source, context.inputs_callbacks, context.outputs_callbacks);
+            runners.insert(source_id.clone(), runner);
+        }
+
+        for (operator_id, operator_factory) in &data_flow.operator_factories_new {
+            let mut context = ctx.clone();
+            let (inputs, outputs) = links.remove(operator_id).ok_or_else(|| {
+                zferror!(
+                    ErrorKind::IOError,
+                    "Links for Operator < {} > were not created.",
+                    &operator_id
+                )
+            })?;
+
+            let operator = (operator_factory
+                .factory)(
+                    &mut context,
+                    &operator_factory.configuration,
+                    inputs,
+                    outputs,
+                )?;
+                // .await?;
+
+            let operator: Option<Arc<dyn Node>> = match operator {
+                Some(operator) => Some(Arc::new(crate::traits::CastOperator::from(operator))),
+                None => None,
+            };
+
+            let runner = Runner::new(
+                operator,
+                context.inputs_callbacks,
+                context.outputs_callbacks,
+            );
+            runners.insert(operator_id.clone(), runner);
+        }
+
+        for (sink_id, sink_factory) in &data_flow.sink_factories_new {
+            let mut context = ctx.clone();
+            let (inputs, _) = links.remove(sink_id).ok_or_else(|| {
+                zferror!(
+                    ErrorKind::IOError,
+                    "Links for Sink < {} > were not created.",
+                    &sink_id
+                )
+            })?;
+
+            let sink = (sink_factory
+                .factory)
+                (
+                    &mut context,
+                    &sink_factory.configuration,
+                    inputs,
+                    HashMap::new(),
+                )?;
+                // .await?;
+
+            let sink: Option<Arc<dyn Node>> = match sink {
+                Some(sink) => Some(Arc::new(crate::traits::CastSink::from(sink))),
+                None => None,
+            };
+
+            let runner = Runner::new(sink, context.inputs_callbacks, context.outputs_callbacks);
+            runners.insert(sink_id.clone(), runner);
+        }
+
+        for (connector_id, connector_record) in &data_flow.connectors {
+            let session = instance_context.runtime.session.clone();
+            let node = match &connector_record.kind {
+                ZFConnectorKind::Sender => {
+                    let (inputs, _) = links.remove(connector_id).ok_or_else(|| {
+                        zferror!(
+                            ErrorKind::IOError,
+                            "Links for Sink < {} > were not created.",
+                            connector_id
+                        )
+                    })?;
+                    Some(
+                        Arc::new(ZenohSender::new(connector_record, session, inputs).await?)
+                            as Arc<dyn Node>,
+                    )
+                }
+                ZFConnectorKind::Receiver => {
+                    let (_, outputs) = links.remove(connector_id).ok_or_else(|| {
+                        zferror!(
+                            ErrorKind::IOError,
+                            "Links for Source < {} > were not created.",
+                            &connector_id
+                        )
+                    })?;
+                    Some(
+                        Arc::new(ZenohReceiver::new(connector_record, session, outputs).await?)
+                            as Arc<dyn Node>,
+                    )
+                }
+            };
+
+            let runner = Runner::new(node, vec![], vec![]);
+            runners.insert(connector_id.clone(), runner);
+        }
+
+        Ok(DataFlowInstance {
+            _instance_context: instance_context,
+            data_flow,
+            runners,
+        })
+    }
+}
 /// Creates the [`Link`](`Link`) between the `nodes` using `links`.
 ///
 /// # Errors

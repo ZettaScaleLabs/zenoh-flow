@@ -23,14 +23,19 @@ use uuid::Uuid;
 use crate::model::record::{
     DataFlowRecord, LinkRecord, OperatorRecord, SinkRecord, SourceRecord, ZFConnectorRecord,
 };
+use crate::prelude::{Configuration, Context, Inputs, Outputs};
 // use crate::model::dataflow::validator::DataflowValidator;
-use self::node::{OperatorFactory, SinkFactory, SourceFactory};
+use self::node::{
+    AsyncNodeFactoryFn, OperatorFactory, OperatorFactoryNew, SinkFactory, SinkFactoryNew,
+    SourceFactory, SourceFactoryNew,
+};
 use crate::model::descriptor::{InputDescriptor, OutputDescriptor};
 use crate::runtime::RuntimeContext;
 use crate::traits;
 use crate::types::NodeId;
 use crate::Result as ZFResult;
 
+use crate::runtime::dataflow::node::NodeFactoryFn;
 /// `DataFlow` is an intermediate structure which primary purpose is to store the loaded libraries.
 ///
 /// This intermediate structure is needed to create data flows programmatically. It is mostly used
@@ -45,10 +50,14 @@ pub struct DataFlow {
     pub(crate) source_factories: HashMap<NodeId, SourceFactory>,
     pub(crate) operator_factories: HashMap<NodeId, OperatorFactory>,
     pub(crate) sink_factories: HashMap<NodeId, SinkFactory>,
+    pub(crate) source_factories_new: HashMap<NodeId, SourceFactoryNew>,
+    pub(crate) operator_factories_new: HashMap<NodeId, OperatorFactoryNew>,
+    pub(crate) sink_factories_new: HashMap<NodeId, SinkFactoryNew>,
     pub(crate) connectors: HashMap<NodeId, ZFConnectorRecord>,
     pub(crate) links: Vec<LinkRecord>,
     pub(crate) counter: u32,
 }
+
 
 impl DataFlow {
     /// Create a new empty `DataFlow` named `name` with the provided `RuntimeContext`.
@@ -65,11 +74,71 @@ impl DataFlow {
             source_factories: HashMap::new(),
             operator_factories: HashMap::new(),
             sink_factories: HashMap::new(),
+            source_factories_new: HashMap::new(),
+            operator_factories_new: HashMap::new(),
+            sink_factories_new: HashMap::new(),
             connectors: HashMap::new(),
             links: Vec::new(),
             counter: 0,
         }
     }
+
+    /// NEW factories
+
+    /// Add a `SourceFactory` to the `DataFlow`.
+    ///
+    /// **Unless you know very well what you are doing, you should not use this method**.
+    ///
+    /// If the Source is not correctly connected to downstream nodes, its data will never be
+    /// received.
+    pub fn add_source_factory_new(
+        &mut self,
+        record: SourceRecord,
+        // factory: Arc<dyn crate::runtime::dataflow::AsyncNodeFactoryFn<dyn traits::Source>>,
+        factory: NodeFactoryFn<dyn traits::Source>,
+    ) {
+        self.source_factories_new.insert(
+            record.id.clone(),
+            SourceFactoryNew::new_static(record, factory),
+        );
+    }
+
+    /// Add an `OperatorFactory` to the `DataFlow`.
+    ///
+    /// **Unless you know very well what you are doing, you should not use this method**.
+    ///
+    /// If the Operator is not correctly connected to upstream and downstream nodes, it will never
+    /// receive, process and emit data.
+    pub fn add_operator_factory_new(
+        &mut self,
+        record: OperatorRecord,
+        // factory: Arc<dyn crate::runtime::dataflow::AsyncNodeFactoryFn<dyn traits::Operator>>,
+        factory: NodeFactoryFn<dyn traits::Operator>,
+    ) {
+        self.operator_factories_new.insert(
+            record.id.clone(),
+            OperatorFactoryNew::new_static(record, factory),
+        );
+    }
+
+    /// Add a `SinkFactory` to the `DataFlow`.
+    ///
+    /// **Unless you know very well what you are doing, you should not use this method**.
+    ///
+    /// If the Sink is not correctly connected to upstream nodes, it will never receive data.
+    pub fn add_sink_factory_new(
+        &mut self,
+        record: SinkRecord,
+        // factory: Arc<dyn crate::runtime::dataflow::AsyncNodeFactoryFn<dyn traits::Sink>>,
+        factory: NodeFactoryFn<dyn traits::Sink>,
+    ) {
+        self.sink_factories_new.insert(
+            record.id.clone(),
+            SinkFactoryNew::new_static(record, factory),
+        );
+    }
+
+    /// OLD factories
 
     /// Add a `SourceFactory` to the `DataFlow`.
     ///
@@ -194,6 +263,9 @@ impl DataFlow {
             source_factories,
             operator_factories,
             sink_factories,
+            source_factories_new: HashMap::new(),
+            operator_factories_new: HashMap::new(),
+            sink_factories_new: HashMap::new(),
             connectors,
             links,
             counter,
