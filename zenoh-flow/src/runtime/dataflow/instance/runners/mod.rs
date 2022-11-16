@@ -109,6 +109,7 @@ impl Runner {
                 let mut instant: Instant;
                 loop {
                     instant = Instant::now();
+                    log::trace!("Iteration start: {:?}", instant);
                     if let Err(e) = node.iteration().await {
                         log::error!("Iteration error: {:?}", e);
                         return e;

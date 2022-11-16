@@ -23,10 +23,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 /// This trait is used to ensure the data can donwcast to [`Any`](`Any`)
-/// NOTE: This trait is separate from `ZFDataTrait` so that we can provide
+/// NOTE: This trait is separate from `ZFData` so that we can provide
 /// a `#derive` macro to automatically implement it for the users.
 ///
-/// This can be derived using the `#derive(ZFData)`
+/// This can be derived using the `#[derive(ZFData)]`
 ///
 /// Example::
 /// ```no_run
@@ -85,9 +85,84 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
         Self: Sized;
 }
 
-//TODO: docs
+/// The `Source` trait represents a Source of data in Zenoh Flow.
+/// Sources only possess `Outputs` and their purpose is to fetch data from the external world.
+///
+/// This trait takes an immutable reference to `self` so as to not impact performance. To keep a
+/// state and to mutate it, the interior mutability pattern is necessary.
+/// A struct implementing the Source trait typically needs to keep a reference to the
+/// `Output` it needs.
+///
+/// # Example
+///
+/// ```no_run
+/// extern crate async_trait;
+///
+/// use zenoh_flow::prelude::*;
+/// use zenoh_flow::zenoh_flow_derive::ZFData;
+///
+/// static SOURCE: &str = "Counter";
+///
+/// #[derive(Debug, Clone, ZFData)]
+/// pub struct ZFUsize(pub usize);
+///
+/// impl ZFData for ZFUsize {
+/// fn try_serialize(&self) -> Result<Vec<u8>> {
+///     Ok(self.0.to_ne_bytes().to_vec())
+/// }
+///
+/// fn try_deserialize(bytes: &[u8]) -> Result<Self>
+/// where
+///     Self: Sized,
+/// {
+///     let value = usize::from_ne_bytes(
+///         bytes
+///             .try_into()
+//             .map_err(|e| zferror!(ErrorKind::DeseralizationError, "{}", e))?,
+///     );
+///     Ok(ZFUsize(value))
+/// }
+/// }
+///
+/// pub struct MySource {
+///   output: Output,    // A Source would have one or more outputs.
+///   // The state could go in such structure.
+///   // state: Arc<Mutex<T>>,
+/// }
+///
+/// #[async_trait::async_trait]
+/// impl Source for MySource {
+///
+///   fn new(
+///         _context: &mut Context,
+///        _configuration: &Option<Configuration>,
+///        _outputs: Outputs,
+///     ) -> Result<Option<Self>> {
+///         let output = outputs.take(SOURCE).unwrap();
+///         Ok(Some(Self{output}))
+///     }
+///
+///   async fn iteration(&self) -> Result<()> {
+///     // To mutate the state, first lock it.
+///     // let state = self.state.lock().await;
+///     // from the state the Source may read information from the external
+///     // world, i.e., interacting with I/O devices.
+///     async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+///
+///     self.output.send_async(ZFUsize(1), None).await?;
+///     Ok(())
+///   }
+/// }
+/// ```
 #[async_trait]
 pub trait Source: Send + Sync {
+    /// For a `Context`, a `Configuration` and a set of `Outputs`, produce a new *Source*.
+    ///
+    /// Sources only possess `Outputs` and their purpose is to fetch data from the external world.
+    ///
+    /// Sources are **started last** when initiating a data flow. This is to prevent data loss: if a
+    /// Source is started before its downstream nodes then the data it would send before said downstream
+    /// nodes are up would be lost.
     fn new(
         context: &mut Context,
         configuration: &Option<Configuration>,
@@ -96,9 +171,14 @@ pub trait Source: Send + Sync {
     where
         Self: Sized;
 
+    /// The `iteration` that is repeatedly called by Zenoh-Flow.
+    /// Here the source can interact with the extrnal world and send
+    /// data over its outputs.
     async fn iteration(&self) -> ZFResult<()>;
 }
 
+/// A `CastSource` is an internal structure used to foster code reuse
+/// in the runtime. I.e., it allows all `Source`s to be `Node`s.
 pub(crate) struct CastSource(Arc<dyn Source>);
 
 impl From<Arc<dyn Source>> for CastSource {
@@ -114,9 +194,62 @@ impl Node for CastSource {
     }
 }
 
-//TODO: docs
+/// The `Sink` trait represents a Sink of data in Zenoh Flow.
+/// Sinks only possess `Inputs`, their objective is to send the result of the computations to the
+/// external world.
+///
+/// This trait takes an immutable reference to `self` so as to not impact performance. To keep a
+/// state and to mutate it, the interior mutability pattern is necessary.
+/// A struct implementing the Sink trait typically needs to keep a reference to the
+/// `Output` it needs.
+///
+/// # Example
+///
+/// ```no_run
+/// extern crate async_trait;
+///
+/// use zenoh_flow::prelude::*;
+///
+/// static SOURCE: &str = "Counter";
+///
+/// struct GenericSink {
+///     input: Input,
+/// }
+///
+/// #[async_trait]
+/// impl Sink for GenericSink {
+///
+///     fn new(
+///         _context: &mut Context,
+///         _configuration: &Option<Configuration>,
+///         mut inputs: Inputs,
+///     ) -> Result<Option<Self>> {
+///         let input = inputs.take(SOURCE).unwrap();
+///
+///         Ok(Some(GenericSink {
+///             input,
+///         }))
+///     }
+///
+///     async fn iteration(&self) -> Result<()> {
+///
+///         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
+///             println!("Data {:?}", msg);
+///         }
+///
+///         Ok(())
+///     }
+/// }
+/// ```
 #[async_trait]
 pub trait Sink: Send + Sync {
+    /// For a `Context`, a `Configuration` and a set of `Inputs`, produce a new **Sink**.
+    ///
+    /// Sinks only possess `Inputs`, their objective is to send the result of the computations to the
+    /// external world.
+    ///
+    /// Sinks are **started first** when initiating a data flow. As they are at the end of the chain of
+    /// computations, by starting them first we ensure that no data is lost.
     fn new(
         context: &mut Context,
         configuration: &Option<Configuration>,
@@ -125,9 +258,14 @@ pub trait Sink: Send + Sync {
     where
         Self: Sized;
 
+    /// The `iteration` that is repeatedly called by Zenoh-Flow.
+    /// Here the source can interact with the extrnal world and retrieve
+    /// data from its inputs.
     async fn iteration(&self) -> ZFResult<()>;
 }
 
+/// A `CastSink` is an internal structure used to foster code reuse
+/// in the runtime. I.e., it allows all `Sink`s to be `Node`s.
 pub(crate) struct CastSink(Arc<dyn Sink>);
 
 impl From<Arc<dyn Sink>> for CastSink {
@@ -143,9 +281,62 @@ impl Node for CastSink {
     }
 }
 
-//TODO: docs
+/// The `Operator` trait represents an Operator inside Zenoh Flow.
+/// Operators are at the heart of a data flow, they carry out computations on the data they receive
+/// before sending them out to the next downstream node.
+///
+/// This trait takes an immutable reference to `self` so as to not impact performance. To keep a
+/// state and to mutate it, the interior mutability pattern is necessary.
+///
+/// A struct implementing the Operator trait typically needs to keep a reference to the `Input` and
+/// `Output` it needs.
+///  # Example
+///
+/// ```no_run
+/// extern crate async_trait;
+///
+/// use zenoh_flow::prelude::*;
+///
+/// static SOURCE: &str = "Counter";
+/// static DESTINATION: &str = "Counter";
+///
+/// struct NoOp {
+///     input: Input,
+///     output: Output,
+/// }
+///
+/// #[async_trait]
+/// impl Operator for NoOp {
+///     fn new(
+///         _context: &mut Context,
+///         _configuration: &Option<Configuration>,
+///         mut inputs: Inputs,
+///         mut outputs: Outputs,
+///     ) -> Result<Option<Self>> {
+///         Ok(Some(NoOp {
+///             input: inputs.take(SOURCE).unwrap(),
+///             output: outputs.take(DESTINATION).unwrap(),
+///         }))
+///     }
+///
+///     async fn iteration(&self) -> Result<()> {
+///         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
+///             let data = msg.try_get::<ZFUsize>()?;
+///             self.output.send_async(data.clone(), None).await?;
+///         }
+///         Ok(())
+///     }
+/// }
+/// ```
 #[async_trait]
 pub trait Operator: Send + Sync {
+    /// For a `Context`, a `Configuration`, a set of `Inputs` and `Outputs`, produce a new **Operator**.
+    ///
+    /// Operators are at the heart of a data flow, they carry out computations on the data they receive
+    /// before sending them out to the next downstream node.
+    ///
+    /// The Operators are started *before the Sources* such that they are active before the first data
+    /// are produced.
     fn new(
         context: &mut Context,
         configuration: &Option<Configuration>,
@@ -155,9 +346,14 @@ pub trait Operator: Send + Sync {
     where
         Self: Sized;
 
+    /// The `iteration` that is repeatedly called by Zenoh-Flow.
+    /// Here the operator can interact retrieve data from its inputs,
+    /// compute over them, and send the results on its outputs.
     async fn iteration(&self) -> ZFResult<()>;
 }
 
+/// A `CastOperator` is an internal structure used to foster code reuse
+/// in the runtime. I.e., it allows all `Operator`s to be `Node`s.
 pub(crate) struct CastOperator(Arc<dyn Operator>);
 
 impl From<Arc<dyn Operator>> for CastOperator {
@@ -181,33 +377,7 @@ impl Node for CastOperator {
 /// A struct implementing the Node trait typically needs to keep a reference to the `Input` and
 /// `Output` it needs.
 ///
-/// # Example
-///
-/// ```no_run
-/// extern crate async_trait;
-///
-/// use zenoh_flow::prelude::*;
-///
-/// pub struct MyNode {
-///   input: Input,    // A Source would have no input
-///   output: Output,  // A Sink would have no output
-///   // The state could go in such structure.
-///   // state: Arc<Mutex<T>>,
-/// }
-///
-/// #[async_trait::async_trait]
-/// impl Node for MyNode {
-///   async fn iteration(&self) -> Result<()> {
-///     // To mutate the state, first lock it.
-///     // let state = self.state.lock().await;
-///
-///     if let Ok(Message::Data(mut message)) = self.input.recv_async().await {
-///       let data = message.get_inner_data();
-///       self.output.send_async(data.clone(), None).await?;
-///     }
-///     Ok(())
-///   }
-/// }
+/// * Note: * not intended to be directly used by users.
 /// ```
 #[async_trait]
 pub trait Node: Send + Sync {
@@ -233,228 +403,6 @@ impl Node for dyn Operator {
     async fn iteration(&self) -> ZFResult<()> {
         Operator::iteration(self).await
     }
-}
-
-/// For a `Context`, a `Configuration` and a set of `Outputs`, produce a new *Source*.
-///
-/// Sources only possess `Outputs` and their purpose is to fetch data from the external world.
-///
-/// Sources are **started last** when initiating a data flow. This is to prevent data loss: if a
-/// Source is started before its downstream nodes then the data it would send before said downstream
-/// nodes are up would be lost.
-///
-/// # Example
-///
-/// ```no_run
-/// extern crate async_trait;
-/// extern crate async_std;
-///
-/// use std::sync::Arc;
-/// use std::time::Duration;
-///
-/// use zenoh_flow::prelude::*;
-///
-/// pub struct MySource {
-///   output: Output,
-///
-///   // If we read from a sensor we can keep a reference here.
-///   // If we need to mutate it, it could go behind an `Arc<Mutex<T>>`.
-///   // sensor: Sensor,
-/// }
-///
-/// #[async_trait::async_trait]
-/// impl Node for MySource {
-///   async fn iteration(&self) -> Result<()> {
-///     async_std::task::sleep(Duration::from_secs(1)).await;
-///
-///     // We can read data from a sensor every second and send it.
-///     // let data = self.sensor.read().await;
-///     // self.output.send_async(data, None).await;
-///
-///     Ok(())
-///   }
-/// }
-///
-/// pub struct MySourceFactory;
-///
-/// #[async_trait::async_trait]
-/// impl SourceFactoryTrait for MySourceFactory {
-///   async fn new_source(
-///     &self,
-///     context: &mut Context,
-///     configuration: &Option<Configuration>,
-///     mut outputs: Outputs,
-///   ) -> Result<Option<Arc<dyn Node>>> {
-///      if let Some(configuration) = configuration {
-///        // We can read the configuration here.
-///        let sensor_file = configuration["sensor"].as_str().expect("No sensor in configuration");
-///      }
-///
-///      // If we want to transform an Output in a callback, then we can leverage the Context.
-///      // context.register_output_callback(output, Arc::new(move || { … }));
-///
-///      let output = outputs.take("out").expect("No output named 'out'");
-///
-///      Ok(Some(Arc::new(MySource { output })))
-///   }
-/// }
-/// ```
-#[async_trait]
-pub trait SourceFactoryTrait: Send + Sync {
-    async fn new_source(
-        &self,
-        context: &mut Context,
-        configuration: &Option<Configuration>,
-        mut outputs: Outputs,
-    ) -> ZFResult<Option<Arc<dyn Node>>>;
-}
-
-/// For a `Context`, a `Configuration`, a set of `Inputs` and `Outputs`, produce a new **Operator**.
-///
-/// Operators are at the heart of a data flow, they carry out computations on the data they receive
-/// before sending them out to the next downstream node.
-///
-/// The Operators are started *before the Sources* such that they are active before the first data
-/// are produced.
-///
-/// # Example
-///
-/// ```no_run
-/// extern crate async_trait;
-/// extern crate async_std;
-///
-/// use std::sync::Arc;
-///
-/// use zenoh_flow::prelude::*;
-///
-/// pub struct MyOperator {
-///   input: Input,
-///   output: Output,
-///   // state: Arc<Mutex<T>>,
-/// }
-///
-/// #[async_trait::async_trait]
-/// impl Node for MyOperator {
-///   async fn iteration(&self) -> Result<()> {
-///     // let state = self.state.lock().await;
-///
-///     if let Ok(Message::Data(mut message)) = self.input.recv_async().await {
-///       let mut data = message.get_inner_data().clone();
-///       // Computation based on the data would be performed here. For instance:
-///       // data += 1;
-///       self.output.send_async(data, None).await?;
-///     }
-///     Ok(())
-///   }
-/// }
-///
-/// pub struct MyOperatorFactory;
-///
-/// #[async_trait::async_trait]
-/// impl OperatorFactoryTrait for MyOperatorFactory {
-///   async fn new_operator(
-///     &self,
-///     context: &mut Context,
-///     configuration: &Option<Configuration>,
-///     mut inputs: Inputs,
-///     mut outputs: Outputs,
-///   ) -> Result<Option<Arc<dyn Node>>> {
-///      if let Some(configuration) = configuration {
-///        // We can read the configuration here and set some default values.
-///        // These values could be used to populate the state.
-///      }
-///
-///      // If we want to transform an Output or an Input in a callback, then we can leverage the
-///      // Context.
-///      //
-///      // context.register_input_callbac(input, Arc::new(move |message| { … }));
-///      // context.register_output_callback(output, Arc::new(move || { … }));
-///
-///      let input = inputs.take("in").expect("No input named 'in'");
-///      let output = outputs.take("out").expect("No output named 'out'");
-///
-///      Ok(Some(Arc::new(MyOperator { input, output })))
-///   }
-/// }
-///
-/// ```
-#[async_trait]
-pub trait OperatorFactoryTrait: Send + Sync {
-    async fn new_operator(
-        &self,
-        context: &mut Context,
-        configuration: &Option<Configuration>,
-        mut inputs: Inputs,
-        mut outputs: Outputs,
-    ) -> ZFResult<Option<Arc<dyn Node>>>;
-}
-
-/// For a `Context`, a `Configuration` and a set of `Inputs`, produce a new **Sink**.
-///
-/// Sinks only possess `Inputs`, their objective is to send the result of the computations to the
-/// external world.
-///
-/// Sinks are **started first** when initiating a data flow. As they are at the end of the chain of
-/// computations, by starting them first we ensure that no data is lost.
-///
-/// # Example
-///
-/// ```no_run
-/// extern crate async_trait;
-/// extern crate async_std;
-///
-/// use std::sync::Arc;
-///
-/// use zenoh_flow::prelude::*;
-///
-/// pub struct MySink {
-///   input: Input,
-///   // state: Arc<Mutex<T>>,
-/// }
-///
-/// #[async_trait::async_trait]
-/// impl Node for MySink {
-///   async fn iteration(&self) -> Result<()> {
-///     if let Ok(Message::Data(mut message)) = self.input.recv_async().await {
-///       let mut data = message.get_inner_data().clone();
-///       // Do something with that data, for instance write it to a file…
-///       println!("Data: {:?}", data);
-///     }
-///     Ok(())
-///   }
-/// }
-///
-/// pub struct MySinkFactory;
-///
-/// #[async_trait::async_trait]
-/// impl SinkFactoryTrait for MySinkFactory {
-///   async fn new_sink(
-///     &self,
-///     context: &mut Context,
-///     configuration: &Option<Configuration>,
-///     mut inputs: Inputs,
-///   ) -> Result<Option<Arc<dyn Node>>> {
-///      if let Some(configuration) = configuration {
-///        // We can read the configuration here.
-///      }
-///
-///      // If we want to transform an Input into a callback, then we can leverage the Context.
-///      // context.register_input_callback(output, Arc::new(move |message| { … }));
-///
-///      let input = inputs.take("in").expect("No input named 'in'");
-///
-///      Ok(Some(Arc::new(MySink { input })))
-///   }
-/// }
-/// ```
-#[async_trait]
-pub trait SinkFactoryTrait: Send + Sync {
-    async fn new_sink(
-        &self,
-        context: &mut Context,
-        configuration: &Option<Configuration>,
-        mut inputs: Inputs,
-    ) -> ZFResult<Option<Arc<dyn Node>>>;
 }
 
 /// Trait wrapping an async closures for sender callback, it requires rust-nightly because of
