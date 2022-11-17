@@ -96,11 +96,10 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 /// # Example
 ///
 /// ```no_run
-/// extern crate async_trait;
-///
+/// use async_trait::async_trait;
 /// use zenoh_flow::prelude::*;
 /// use zenoh_flow::zenoh_flow_derive::ZFData;
-///
+/// use std::convert::TryInto;
 /// static SOURCE: &str = "Counter";
 ///
 /// #[derive(Debug, Clone, ZFData)]
@@ -118,7 +117,7 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///     let value = usize::from_ne_bytes(
 ///         bytes
 ///             .try_into()
-//             .map_err(|e| zferror!(ErrorKind::DeseralizationError, "{}", e))?,
+///             .map_err(|e| zferror!(ErrorKind::DeseralizationError, "{}", e))?,
 ///     );
 ///     Ok(ZFUsize(value))
 /// }
@@ -134,9 +133,9 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 /// impl Source for MySource {
 ///
 ///   fn new(
-///         _context: &mut Context,
+///        _context: &mut Context,
 ///        _configuration: &Option<Configuration>,
-///        _outputs: Outputs,
+///        mut outputs: Outputs,
 ///     ) -> Result<Option<Self>> {
 ///         let output = outputs.take(SOURCE).unwrap();
 ///         Ok(Some(Self{output}))
@@ -206,8 +205,7 @@ impl Node for CastSource {
 /// # Example
 ///
 /// ```no_run
-/// extern crate async_trait;
-///
+/// use async_trait::async_trait;
 /// use zenoh_flow::prelude::*;
 ///
 /// static SOURCE: &str = "Counter";
@@ -293,8 +291,7 @@ impl Node for CastSink {
 ///  # Example
 ///
 /// ```no_run
-/// extern crate async_trait;
-///
+/// use async_trait::async_trait;
 /// use zenoh_flow::prelude::*;
 ///
 /// static SOURCE: &str = "Counter";
@@ -321,8 +318,7 @@ impl Node for CastSink {
 ///
 ///     async fn iteration(&self) -> Result<()> {
 ///         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
-///             let data = msg.try_get::<ZFUsize>()?;
-///             self.output.send_async(data.clone(), None).await?;
+///             self.output.send_async((*msg).clone(), None).await?;
 ///         }
 ///         Ok(())
 ///     }

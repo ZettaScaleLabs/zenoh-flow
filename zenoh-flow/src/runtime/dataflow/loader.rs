@@ -14,7 +14,8 @@
 
 use super::node::{OperatorFactory, SinkFactory, SourceFactory};
 use crate::model::record::{OperatorRecord, SinkRecord, SourceRecord};
-use crate::prelude::{OperatorFactoryTrait, SinkFactoryTrait, SourceFactoryTrait};
+use crate::prelude::{Operator, Sink, Source};
+use crate::runtime::dataflow::NodeFactoryFn;
 use crate::types::Configuration;
 use crate::zfresult::ErrorKind;
 use crate::Result;
@@ -46,6 +47,9 @@ pub static RUSTC_VERSION: &str = env!("RUSTC_VERSION");
 
 pub static EXT_FILE_EXTENSION: &str = "zfext";
 
+/// The alias to the function type created by the export macros.
+pub(crate) type ExportFn<T> = fn() -> NodeDeclaration<T>;
+
 /// FactorySymbol groups the symbol we must find in the shared library we load.
 pub enum FactorySymbol {
     Source,
@@ -63,9 +67,9 @@ impl FactorySymbol {
     /// Where `<node_kind>` is either `operator`, `source`, or `sink`.
     pub(crate) fn to_bytes(&self) -> &[u8] {
         match self {
-            FactorySymbol::Source => b"zfsource_factory_declaration\0",
-            FactorySymbol::Operator => b"zfoperator_factory_declaration\0",
-            FactorySymbol::Sink => b"zfsink_factory_declaration\0",
+            FactorySymbol::Source => b"_zf_export_source\0",
+            FactorySymbol::Operator => b"_zf_export_operator\0",
+            FactorySymbol::Sink => b"_zf_export_sink\0",
         }
     }
 }
@@ -74,7 +78,7 @@ impl FactorySymbol {
 pub struct NodeDeclaration<T: ?Sized> {
     pub rustc_version: &'static str,
     pub core_version: &'static str,
-    pub register: fn() -> Arc<T>,
+    pub register: NodeFactoryFn<T>,
 }
 
 /// Extensible support for different implementations
@@ -214,7 +218,7 @@ impl Loader {
         factory_symbol: FactorySymbol,
         uri: &str,
         configuration: &mut Option<Configuration>,
-    ) -> Result<(Library, Arc<T>)> {
+    ) -> Result<(Library, NodeFactoryFn<T>)> {
         let uri = Url::parse(uri).map_err(|err| zferror!(ErrorKind::ParsingError, err))?;
 
         match uri.scheme() {
@@ -249,22 +253,23 @@ impl Loader {
                     }
                 };
 
+                log::trace!("[Loader] loading library {:?}", library_path);
+
                 #[cfg(target_family = "unix")]
                 let library = Library::open(Some(library_path), LOAD_FLAGS)?;
 
                 #[cfg(target_family = "windows")]
                 let library = Library::new(library_path)?;
 
-                let decl = library
-                    .get::<*mut NodeDeclaration<T>>(factory_symbol.to_bytes())?
-                    .read();
+                let export_fn = library.get::<ExportFn<T>>(factory_symbol.to_bytes())?;
+                let decl = (export_fn)();
 
                 // version checks to prevent accidental ABI incompatibilities
                 if decl.rustc_version != RUSTC_VERSION || decl.core_version != CORE_VERSION {
                     return Err(zferror!(ErrorKind::VersionMismatch).into());
                 }
 
-                Ok((library, (decl.register)()))
+                Ok((library, decl.register))
             }
 
             _ => Err(zferror!(ErrorKind::Unimplemented).into()),
@@ -285,18 +290,18 @@ impl Loader {
     pub(crate) fn load_source_factory(&self, mut record: SourceRecord) -> Result<SourceFactory> {
         if let Some(uri) = &record.uri {
             let (library, factory) = unsafe {
-                self.load_factory::<dyn SourceFactoryTrait>(
+                self.load_factory::<dyn Source>(
                     FactorySymbol::Source,
                     uri,
                     &mut record.configuration,
                 )?
             };
 
-            Ok(SourceFactory {
+            Ok(SourceFactory::new_dynamic(
                 record,
                 factory,
-                _library: Some(Arc::new(library)),
-            })
+                Arc::new(library),
+            ))
         } else {
             bail!(
                 ErrorKind::LoadingError,
@@ -324,18 +329,18 @@ impl Loader {
     ) -> Result<OperatorFactory> {
         if let Some(uri) = &record.uri {
             let (library, factory) = unsafe {
-                self.load_factory::<dyn OperatorFactoryTrait>(
+                self.load_factory::<dyn Operator>(
                     FactorySymbol::Operator,
                     uri,
                     &mut record.configuration,
                 )?
             };
 
-            Ok(OperatorFactory {
+            Ok(OperatorFactory::new_dynamic(
                 record,
                 factory,
-                _library: Some(Arc::new(library)),
-            })
+                Arc::new(library),
+            ))
         } else {
             bail!(
                 ErrorKind::LoadingError,
@@ -359,18 +364,10 @@ impl Loader {
     pub(crate) fn load_sink_factory(&self, mut record: SinkRecord) -> Result<SinkFactory> {
         if let Some(uri) = &record.uri {
             let (library, factory) = unsafe {
-                self.load_factory::<dyn SinkFactoryTrait>(
-                    FactorySymbol::Sink,
-                    uri,
-                    &mut record.configuration,
-                )?
+                self.load_factory::<dyn Sink>(FactorySymbol::Sink, uri, &mut record.configuration)?
             };
 
-            Ok(SinkFactory {
-                record,
-                factory,
-                _library: Some(Arc::new(library)),
-            })
+            Ok(SinkFactory::new_dynamic(record, factory, Arc::new(library)))
         } else {
             bail!(
                 ErrorKind::LoadingError,
