@@ -185,23 +185,18 @@ impl DataFlowInstance {
                 )
             })?;
 
-            let source = (source_factory
-                .factory)
-                // .call(
-                (
-                    &mut context,
-                    &source_factory.configuration,
-                    HashMap::new(),
-                    outputs,
-                )?;
-            // .await?;
+            let source = (source_factory.factory)(
+                &mut context,
+                &source_factory.configuration,
+                HashMap::new(),
+                outputs,
+            )?;
 
             let source: Option<Arc<dyn Node>> = match source {
                 Some(source) => Some(Arc::new(crate::traits::CastSource::from(source))),
                 None => None,
             };
 
-            // .await?;
             let runner = Runner::new(source, context.inputs_callbacks, context.outputs_callbacks);
             runners.insert(source_id.clone(), runner);
         }
@@ -222,7 +217,6 @@ impl DataFlowInstance {
                 inputs,
                 outputs,
             )?;
-            // .await?;
 
             let operator: Option<Arc<dyn Node>> = match operator {
                 Some(operator) => Some(Arc::new(crate::traits::CastOperator::from(operator))),
@@ -253,7 +247,6 @@ impl DataFlowInstance {
                 inputs,
                 HashMap::new(),
             )?;
-            // .await?;
 
             let sink: Option<Arc<dyn Node>> = match sink {
                 Some(sink) => Some(Arc::new(crate::traits::CastSink::from(sink))),

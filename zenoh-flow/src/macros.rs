@@ -33,7 +33,7 @@
 ///         outputs: Outputs,
 /// ) -> Result<Option<Self>>
 ///    where
-///    Self: Sized; {
+///    Self: Sized {
 ///         todo!()
 ///     }
 ///
@@ -47,22 +47,25 @@
 ///
 #[macro_export]
 macro_rules! export_operator {
-    ($operator:expr) => {
+    ($factory:path) => {
         #[doc(hidden)]
         #[no_mangle]
-        pub static _zf_export_operator: $crate::runtime::dataflow::loader::NodeDeclaration<
-        $crate::traits::Operator,
-        > = $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Operator> {
-            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
-            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-            register: Arc::new(|ctx, configuration, inputs, outputs| {
-                match $factory::new(ctx, configuration, inputs, outputs) {
-                    Ok(Some(operator)) => Ok(Some(Arc::new(operator) as Arc<dyn $crate::traits::Operator)),
-                    Ok(None) => None,
-                    Err(e) => Err(e),
-                }
-            }),
-        };
+        fn _zf_export_operator(
+        ) -> $crate::runtime::dataflow::loader::NodeDeclaration<$crate::traits::Operator> {
+            $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Operator> {
+                rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+                core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+                register: Arc::new(|ctx, configuration, inputs, outputs| {
+                    match <$factory>::new(ctx, configuration, inputs, outputs) {
+                        Ok(Some(operator)) => {
+                            Ok(Some(Arc::new(operator) as Arc<dyn $crate::traits::Operator>))
+                        }
+                        Ok(None) => Ok(None),
+                        Err(e) => Err(e),
+                    }
+                }),
+            }
+        }
     };
 }
 
@@ -91,27 +94,36 @@ macro_rules! export_operator {
 ///     async fn iteration(&self) -> Result<()> {
 ///         todo!()
 ///     }
+/// }
 ///
 /// export_sink!(MySink);
 /// ```
 ///
 #[macro_export]
 macro_rules! export_sink {
-    ($operator:expr) => {
+    ($factory:path) => {
         #[doc(hidden)]
         #[no_mangle]
-        pub static _zf_export_sink: $crate::runtime::dataflow::loader::NodeDeclaration<Sink> =
-            $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Sink>> {
+        fn _zf_export_sink(
+        ) -> $crate::runtime::dataflow::loader::NodeDeclaration<$crate::traits::Sink> {
+            $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Sink> {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-                register: std::sync::Arc::new(|ctx, configuration, inputs, _| {
-                    match $factory::new(ctx, configuration, inputs) {
-                        Ok(Some(source)) => Ok(Some(std::sync::Arc::new(source) as Arc<dyn $crate::traits::Sink>))
+                register: std::sync::Arc::new(
+                    |ctx, configuration, inputs, _| match <$factory>::new(
+                        ctx,
+                        configuration,
+                        inputs,
+                    ) {
+                        Ok(Some(sink)) => Ok(Some(
+                            std::sync::Arc::new(sink) as Arc<dyn $crate::traits::Sink>
+                        )),
                         Ok(None) => Ok(None),
                         Err(e) => Err(e),
-                    }
-                }),
-            };
+                    },
+                ),
+            }
+        }
     };
 }
 
@@ -147,21 +159,29 @@ macro_rules! export_sink {
 ///
 #[macro_export]
 macro_rules! export_source {
-    ($operator:expr) => {
+    ($factory:path) => {
         #[doc(hidden)]
         #[no_mangle]
-        pub static _zf_export_source: $crate::runtime::dataflow::loader::NodeDeclaration<$crate::traits::Source> =
+        fn _zf_export_source(
+        ) -> $crate::runtime::dataflow::loader::NodeDeclaration<$crate::traits::Source> {
             $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Source> {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-                register: std::sync::Arc::new(|ctx, configuration, _, outputs| {
-                    match $factory::new(ctx, configuration, outputs) {
-                        Ok(Some(source)) => Ok(Some(std::sync::Arc::new(source) as Arc<dyn $crate::traits::Source)),
-                        Ok(None) => None,
+                register: std::sync::Arc::new(
+                    |ctx, configuration, _, outputs| match <$factory>::new(
+                        ctx,
+                        configuration,
+                        outputs,
+                    ) {
+                        Ok(Some(source)) => Ok(Some(
+                            std::sync::Arc::new(source) as Arc<dyn $crate::traits::Source>
+                        )),
+                        Ok(None) => Ok(None),
                         Err(e) => Err(e),
-                    }
-                }),
-            };
+                    },
+                ),
+            }
+        }
     };
 }
 

@@ -29,6 +29,7 @@ use futures::Future;
 use std::pin::Pin;
 
 //TODO: make the new function asynchronous.
+#[allow(clippy::type_complexity)]
 pub trait AsyncNodeFactoryFn<T: ?Sized>: Send + Sync {
     fn call(
         &self,
@@ -73,7 +74,6 @@ pub type NodeFactoryFn<T> = Arc<
 /// can be `None` when the factory is created programmatically.
 pub(crate) struct NodeFactory<U, T: ?Sized> {
     pub(crate) record: U,
-    // pub(crate) factory: Arc<dyn AsyncNodeFactoryFn<T>>,
     pub(crate) factory: NodeFactoryFn<T>,
     _library: Option<Arc<Library>>,
 }
@@ -92,15 +92,19 @@ impl<U, T: traits::Node + ?Sized> NodeFactory<U, T> {
     /// Creates a NodeFactory without a `library`.
     ///
     /// This function is intended for internal use in order to create a data flow programmatically.
-    pub(crate) fn new_static(
-        record: U,
-        // factory: Arc<dyn AsyncNodeFactoryFn<T>>
-        factory: NodeFactoryFn<T>,
-    ) -> Self {
+    pub(crate) fn new_static(record: U, factory: NodeFactoryFn<T>) -> Self {
         Self {
             record,
             factory,
             _library: None,
+        }
+    }
+
+    pub(crate) fn new_dynamic(record: U, factory: NodeFactoryFn<T>, library: Arc<Library>) -> Self {
+        Self {
+            record,
+            factory,
+            _library: Some(library),
         }
     }
 }

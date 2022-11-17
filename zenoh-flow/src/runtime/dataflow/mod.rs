@@ -160,45 +160,45 @@ impl DataFlow {
             counter,
         } = record;
 
-        // let source_factories = sources
-        //     .into_iter()
-        //     .map(|(source_id, source_record)| {
-        //         context
-        //             .loader
-        //             .load_source_factory(source_record)
-        //             // `map` leaves the Error untouched and allows us to transform the Ok into a
-        //             // tuple so we can finally build an HashMap
-        //             .map(|source_factory| (source_id, source_factory))
-        //     })
-        //     .collect::<ZFResult<HashMap<NodeId, SourceFactory>>>()?;
+        let source_factories = sources
+            .into_iter()
+            .map(|(source_id, source_record)| {
+                context
+                    .loader
+                    .load_source_factory(source_record)
+                    // `map` leaves the Error untouched and allows us to transform the Ok into a
+                    // tuple so we can finally build an HashMap
+                    .map(|source_factory| (source_id, source_factory))
+            })
+            .collect::<ZFResult<HashMap<NodeId, SourceFactory>>>()?;
 
-        // let operator_factories = operators
-        //     .into_iter()
-        //     .map(|(operator_id, operator_record)| {
-        //         context
-        //             .loader
-        //             .load_operator_factory(operator_record)
-        //             .map(|operator_factory| (operator_id, operator_factory))
-        //     })
-        //     .collect::<ZFResult<HashMap<NodeId, OperatorFactory>>>()?;
+        let operator_factories = operators
+            .into_iter()
+            .map(|(operator_id, operator_record)| {
+                context
+                    .loader
+                    .load_operator_factory(operator_record)
+                    .map(|operator_factory| (operator_id, operator_factory))
+            })
+            .collect::<ZFResult<HashMap<NodeId, OperatorFactory>>>()?;
 
-        // let sink_factories = sinks
-        //     .into_iter()
-        //     .map(|(sink_id, sink_record)| {
-        //         context
-        //             .loader
-        //             .load_sink_factory(sink_record)
-        //             .map(|sink_factory| (sink_id, sink_factory))
-        //     })
-        //     .collect::<ZFResult<HashMap<NodeId, SinkFactory>>>()?;
+        let sink_factories = sinks
+            .into_iter()
+            .map(|(sink_id, sink_record)| {
+                context
+                    .loader
+                    .load_sink_factory(sink_record)
+                    .map(|sink_factory| (sink_id, sink_factory))
+            })
+            .collect::<ZFResult<HashMap<NodeId, SinkFactory>>>()?;
 
         Ok(Self {
             uuid,
             flow: flow.into(),
             context,
-            source_factories: HashMap::new(),
-            operator_factories: HashMap::new(),
-            sink_factories: HashMap::new(),
+            source_factories,
+            operator_factories,
+            sink_factories,
             connectors,
             links,
             counter,
