@@ -12,58 +12,6 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-//TODO:docs
-#[macro_export]
-macro_rules! export_operator {
-    ($operator:expr) => {
-        #[doc(hidden)]
-        #[no_mangle]
-        pub static _zf_export_operator: $crate::runtime::dataflow::loader::NodeDeclaration<
-            Operator,
-        > = $crate::runtime::dataflow::loader::NodeDeclaration::<Operator> {
-            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
-            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-            register: |ctx, configuration, inputs, outputs| {
-                std::sync::Arc::new($factory::new(ctx, configuration, inputs, outputs))
-            },
-        };
-    };
-}
-
-//TODO:docs
-#[macro_export]
-macro_rules! export_sink {
-    ($operator:expr) => {
-        #[doc(hidden)]
-        #[no_mangle]
-        pub static _zf_export_sink: $crate::runtime::dataflow::loader::NodeDeclaration<Sink> =
-            $crate::runtime::dataflow::loader::NodeDeclaration::<Sink> {
-                rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
-                core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-                register: |ctx, configuration, inputs, _| {
-                    std::sync::Arc::new($factory::new(ctx, configuration, inputs))
-                },
-            };
-    };
-}
-
-//TODO:docs
-#[macro_export]
-macro_rules! export_source {
-    ($operator:expr) => {
-        #[doc(hidden)]
-        #[no_mangle]
-        pub static _zf_export_source: $crate::runtime::dataflow::loader::NodeDeclaration<Source> =
-            $crate::runtime::dataflow::loader::NodeDeclaration::<Source> {
-                rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
-                core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-                register: |ctx, configuration, _, outputs| {
-                    std::sync::Arc::new($factory::new(ctx, configuration, outputs))
-                },
-            };
-    };
-}
-
 /// This macros should be used in order to provide the symbols
 /// for the dynamic load of an Operator. Along with a register function
 ///
@@ -74,35 +22,95 @@ macro_rules! export_source {
 /// use std::sync::Arc;
 /// use zenoh_flow::prelude::*;
 ///
-/// pub struct MyOperatorFactory;
+/// pub struct MyOperator;
 ///
 /// #[async_trait]
-/// impl OperatorFactoryTrait for MyOperatorFactory {
-/// async fn new_operator(
-///     &self,
-///     context: &mut Context,
-///     configuration: &Option<Configuration>,
-///     inputs: Inputs,
-///     outputs: Outputs,
-/// ) -> Result<Option<Arc<dyn Node>>> {
+/// impl Operator for MyOperator {
+///     fn new(
+///         context: &mut Context,
+///         configuration: &Option<Configuration>,
+///         inputs: Inputs,
+///         outputs: Outputs,
+/// ) -> Result<Option<Self>>
+///    where
+///    Self: Sized; {
+///         todo!()
+///     }
+///
+///     async fn iteration(&self) -> Result<()> {
 ///         todo!()
 ///     }
 /// }
 ///
-/// export_operator_factory!(MyOperatorFactory {});
+/// export_operator!(MyOperator);
 /// ```
 ///
 #[macro_export]
-macro_rules! export_operator_factory {
-    ($factory:expr) => {
+macro_rules! export_operator {
+    ($operator:expr) => {
         #[doc(hidden)]
         #[no_mangle]
-        pub static zfoperator_factory_declaration:
-            $crate::runtime::dataflow::loader::NodeDeclaration<OperatorFactoryTrait> =
-            $crate::runtime::dataflow::loader::NodeDeclaration::<OperatorFactoryTrait> {
+        pub static _zf_export_operator: $crate::runtime::dataflow::loader::NodeDeclaration<
+        $crate::traits::Operator,
+        > = $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Operator> {
+            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+            register: Arc::new(|ctx, configuration, inputs, outputs| {
+                match $factory::new(ctx, configuration, inputs, outputs) {
+                    Ok(Some(operator)) => Ok(Some(Arc::new(operator) as Arc<dyn $crate::traits::Operator)),
+                    Ok(None) => None,
+                    Err(e) => Err(e),
+                }
+            }),
+        };
+    };
+}
+
+/// This macros should be used in order to provide the symbols
+/// for the dynamic load of a Sink. Along with a register function
+///
+/// Example:
+///
+/// ```no_run
+/// use async_trait::async_trait;
+/// use std::sync::Arc;
+/// use zenoh_flow::prelude::*;
+///
+/// pub struct MySink;
+///
+/// #[async_trait]
+/// impl Sink for MySink {
+///   fn new(
+///       context: &mut Context,
+///       configuration: &Option<Configuration>,
+///       inputs: Inputs,
+///   ) -> Result<Option<Self>> {
+///         todo!()
+///     }
+///
+///     async fn iteration(&self) -> Result<()> {
+///         todo!()
+///     }
+///
+/// export_sink!(MySink);
+/// ```
+///
+#[macro_export]
+macro_rules! export_sink {
+    ($operator:expr) => {
+        #[doc(hidden)]
+        #[no_mangle]
+        pub static _zf_export_sink: $crate::runtime::dataflow::loader::NodeDeclaration<Sink> =
+            $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Sink>> {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-                register: || std::sync::Arc::new($factory),
+                register: std::sync::Arc::new(|ctx, configuration, inputs, _| {
+                    match $factory::new(ctx, configuration, inputs) {
+                        Ok(Some(source)) => Ok(Some(std::sync::Arc::new(source) as Arc<dyn $crate::traits::Sink>))
+                        Ok(None) => Ok(None),
+                        Err(e) => Err(e),
+                    }
+                }),
             };
     };
 }
@@ -117,77 +125,43 @@ macro_rules! export_operator_factory {
 /// use std::sync::Arc;
 /// use zenoh_flow::prelude::*;
 ///
-/// pub struct MySourceFactory;
+/// pub struct MySource;
 ///
 /// #[async_trait]
-/// impl SourceFactoryTrait for MySourceFactory {
-///   async fn new_source(
-///       &self,
+/// impl Source for MySource{
+///   fn new(
 ///       context: &mut Context,
 ///       configuration: &Option<Configuration>,
 ///       outputs: Outputs,
-///   ) -> Result<Option<Arc<dyn Node>>> {
+///   ) -> Result<Option<Self>> {
+///         todo!()
+///     }
+///
+///     async fn iteration(&self) -> Result<()> {
 ///         todo!()
 ///     }
 /// }
 ///
-/// export_source_factory!(MySourceFactory {});
+/// export_source!(MySource);
 /// ```
 ///
 #[macro_export]
-macro_rules! export_source_factory {
-    ($factory:expr) => {
+macro_rules! export_source {
+    ($operator:expr) => {
         #[doc(hidden)]
         #[no_mangle]
-        pub static zfsource_factory_declaration:
-            $crate::runtime::dataflow::loader::NodeDeclaration<SourceFactoryTrait> =
-            $crate::runtime::dataflow::loader::NodeDeclaration::<SourceFactoryTrait> {
+        pub static _zf_export_source: $crate::runtime::dataflow::loader::NodeDeclaration<$crate::traits::Source> =
+            $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Source> {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-                register: || std::sync::Arc::new($factory),
+                register: std::sync::Arc::new(|ctx, configuration, _, outputs| {
+                    match $factory::new(ctx, configuration, outputs) {
+                        Ok(Some(source)) => Ok(Some(std::sync::Arc::new(source) as Arc<dyn $crate::traits::Source)),
+                        Ok(None) => None,
+                        Err(e) => Err(e),
+                    }
+                }),
             };
-    };
-}
-
-/// This macros should be used in order to provide the symbols
-/// for the dynamic load of a Sink. Along with a register function
-///
-/// Example:
-///
-/// ```no_run
-/// use async_trait::async_trait;
-/// use std::sync::Arc;
-/// use zenoh_flow::prelude::*;
-///
-/// pub struct MySinkFactory;
-///
-/// #[async_trait]
-/// impl SinkFactoryTrait for MySinkFactory {
-///   async fn new_sink(
-///       &self,
-///       context: &mut Context,
-///       configuration: &Option<Configuration>,
-///       inputs: Inputs,
-///   ) -> Result<Option<Arc<dyn Node>>> {
-///         todo!()
-///     }
-/// }
-///
-/// export_sink_factory!(MySinkFactory {});
-/// ```
-///
-#[macro_export]
-macro_rules! export_sink_factory {
-    ($factory:expr) => {
-        #[doc(hidden)]
-        #[no_mangle]
-        pub static zfsink_factory_declaration: $crate::runtime::dataflow::loader::NodeDeclaration<
-            SinkFactoryTrait,
-        > = $crate::runtime::dataflow::loader::NodeDeclaration::<SinkFactoryTrait> {
-            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
-            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
-            register: || std::sync::Arc::new($factory),
-        };
     };
 }
 
