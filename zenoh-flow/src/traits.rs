@@ -178,13 +178,7 @@ pub trait Source: Send + Sync {
 
 /// A `CastSource` is an internal structure used to foster code reuse
 /// in the runtime. I.e., it allows all `Source`s to be `Node`s.
-pub(crate) struct CastSource(Arc<dyn Source>);
-
-impl From<Arc<dyn Source>> for CastSource {
-    fn from(other: Arc<dyn Source>) -> Self {
-        Self(other)
-    }
-}
+pub(crate) struct CastSource(pub(crate) Arc<dyn Source>);
 
 #[async_trait]
 impl Node for CastSource {
@@ -264,13 +258,7 @@ pub trait Sink: Send + Sync {
 
 /// A `CastSink` is an internal structure used to foster code reuse
 /// in the runtime. I.e., it allows all `Sink`s to be `Node`s.
-pub(crate) struct CastSink(Arc<dyn Sink>);
-
-impl From<Arc<dyn Sink>> for CastSink {
-    fn from(other: Arc<dyn Sink>) -> Self {
-        Self(other)
-    }
-}
+pub(crate) struct CastSink(pub(crate) Arc<dyn Sink>);
 
 #[async_trait]
 impl Node for CastSink {
@@ -350,13 +338,7 @@ pub trait Operator: Send + Sync {
 
 /// A `CastOperator` is an internal structure used to foster code reuse
 /// in the runtime. I.e., it allows all `Operator`s to be `Node`s.
-pub(crate) struct CastOperator(Arc<dyn Operator>);
-
-impl From<Arc<dyn Operator>> for CastOperator {
-    fn from(other: Arc<dyn Operator>) -> Self {
-        Self(other)
-    }
-}
+pub(crate) struct CastOperator(pub(crate) Arc<dyn Operator>);
 
 #[async_trait]
 impl Node for CastOperator {
