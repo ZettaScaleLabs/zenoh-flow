@@ -128,7 +128,7 @@ macro_rules! export_sink {
 }
 
 /// This macros should be used in order to provide the symbols
-/// for the dynamic load of an Source. Along with a register function
+/// for the dynamic load of a Source. Along with a register function
 ///
 /// Example:
 ///
