@@ -14,7 +14,7 @@
 
 use super::node::{OperatorFactory, SinkFactory, SourceFactory};
 use crate::model::record::{OperatorRecord, SinkRecord, SourceRecord};
-use crate::runtime::dataflow::NodeFactoryFn;
+use crate::traits::Factory;
 use crate::types::Configuration;
 use crate::zfresult::ErrorKind;
 use crate::Result;
@@ -77,7 +77,7 @@ impl NodeSymbol {
 pub struct NodeDeclaration {
     pub rustc_version: &'static str,
     pub core_version: &'static str,
-    pub register: NodeFactoryFn,
+    pub register: Arc<dyn Factory>,
 }
 
 /// Extensible support for different implementations
@@ -217,7 +217,7 @@ impl Loader {
         factory_symbol: NodeSymbol,
         uri: &str,
         configuration: &mut Option<Configuration>,
-    ) -> Result<(Library, NodeFactoryFn)> {
+    ) -> Result<(Library, Arc<dyn Factory>)> {
         let uri = Url::parse(uri).map_err(|err| zferror!(ErrorKind::ParsingError, err))?;
 
         match uri.scheme() {

@@ -185,12 +185,15 @@ impl DataFlowInstance {
                 )
             })?;
 
-            let source = (source_factory.factory)(
-                &mut context,
-                &source_factory.configuration,
-                HashMap::new(),
-                outputs,
-            )?;
+            let source = source_factory
+                .factory
+                .make(
+                    &mut context,
+                    &source_factory.configuration,
+                    HashMap::new(),
+                    outputs,
+                )
+                .await?;
 
             // let source: Option<Arc<dyn Node>> = match source {
             //     Some(source) => Some(Arc::new(source)),
@@ -211,12 +214,15 @@ impl DataFlowInstance {
                 )
             })?;
 
-            let operator = (operator_factory.factory)(
-                &mut context,
-                &operator_factory.configuration,
-                inputs,
-                outputs,
-            )?;
+            let operator = operator_factory
+                .factory
+                .make(
+                    &mut context,
+                    &operator_factory.configuration,
+                    inputs,
+                    outputs,
+                )
+                .await?;
 
             // let operator: Option<Arc<dyn Node>> = match operator {
             //     Some(operator) => Some(Arc::new(operator)),
@@ -241,12 +247,15 @@ impl DataFlowInstance {
                 )
             })?;
 
-            let sink = (sink_factory.factory)(
-                &mut context,
-                &sink_factory.configuration,
-                inputs,
-                HashMap::new(),
-            )?;
+            let sink = sink_factory
+                .factory
+                .make(
+                    &mut context,
+                    &sink_factory.configuration,
+                    inputs,
+                    HashMap::new(),
+                )
+                .await?;
 
             // let sink: Option<Arc<dyn Node>> = match sink {
             //     Some(sink) => Some(Arc::new(sink)),

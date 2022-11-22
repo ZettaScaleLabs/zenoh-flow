@@ -57,9 +57,11 @@ pub mod prelude {
         Configuration, Context, Data, DataMessage, Input, Inputs, Message, NodeId, Output, Outputs,
         PortId, RuntimeId, Streams,
     };
-    pub use crate::{export_operator, export_sink, export_source, zferror};
+    pub use crate::zferror;
 
     pub use crate::zfresult::{Error, ErrorKind, ZFResult as Result};
+
+    pub use crate::zenoh_flow_derive::{ZFData, ZFOperator, ZFSink, ZFSource};
 }
 
 /// Commit id of latest commit on Zenoh Flow
