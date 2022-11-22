@@ -14,10 +14,9 @@
 
 use crate::model::record::{OperatorRecord, SinkRecord, SourceRecord};
 use crate::prelude::{Configuration, Context, Inputs, Outputs};
-use crate::traits::Node;
+use crate::traits::{Factory, Node};
 use std::ops::Deref;
 use std::sync::Arc;
-
 
 #[cfg(target_family = "unix")]
 use libloading::os::unix::Library;
@@ -75,7 +74,7 @@ pub type NodeFactoryFn = Arc<
 /// can be `None` when the factory is created programmatically.
 pub(crate) struct NodeFactory<U> {
     pub(crate) record: U,
-    pub(crate) factory: NodeFactoryFn,
+    pub(crate) factory: Arc<dyn Factory>,
     _library: Option<Arc<Library>>,
 }
 
@@ -93,7 +92,7 @@ impl<U> NodeFactory<U> {
     /// Creates a NodeFactory without a `library`.
     ///
     /// This function is intended for internal use in order to create a data flow programmatically.
-    pub(crate) fn new_static(record: U, factory: NodeFactoryFn) -> Self {
+    pub(crate) fn new_static(record: U, factory: Arc<dyn Factory>) -> Self {
         Self {
             record,
             factory,
@@ -101,7 +100,7 @@ impl<U> NodeFactory<U> {
         }
     }
 
-    pub(crate) fn new_dynamic(record: U, factory: NodeFactoryFn, library: Arc<Library>) -> Self {
+    pub(crate) fn new_dynamic(record: U, factory: Arc<dyn Factory>, library: Arc<Library>) -> Self {
         Self {
             record,
             factory,

@@ -23,6 +23,7 @@ use uuid::Uuid;
 use crate::model::record::{
     DataFlowRecord, LinkRecord, OperatorRecord, SinkRecord, SourceRecord, ZFConnectorRecord,
 };
+use crate::traits::Factory;
 
 // use crate::model::dataflow::validator::DataflowValidator;
 use self::node::{OperatorFactory, SinkFactory, SourceFactory};
@@ -31,7 +32,6 @@ use crate::runtime::RuntimeContext;
 use crate::types::NodeId;
 use crate::Result as ZFResult;
 
-use crate::runtime::dataflow::node::NodeFactoryFn;
 /// `DataFlow` is an intermediate structure which primary purpose is to store the loaded libraries.
 ///
 /// This intermediate structure is needed to create data flows programmatically. It is mostly used
@@ -78,7 +78,7 @@ impl DataFlow {
     ///
     /// If the Source is not correctly connected to downstream nodes, its data will never be
     /// received.
-    pub fn add_source(&mut self, record: SourceRecord, factory: NodeFactoryFn) {
+    pub fn add_source(&mut self, record: SourceRecord, factory: Arc<dyn Factory>) {
         self.source_factories.insert(
             record.id.clone(),
             SourceFactory::new_static(record, factory),
@@ -91,7 +91,7 @@ impl DataFlow {
     ///
     /// If the Operator is not correctly connected to upstream and downstream nodes, it will never
     /// receive, process and emit data.
-    pub fn add_operator(&mut self, record: OperatorRecord, factory: NodeFactoryFn) {
+    pub fn add_operator(&mut self, record: OperatorRecord, factory: Arc<dyn Factory>) {
         self.operator_factories.insert(
             record.id.clone(),
             OperatorFactory::new_static(record, factory),
@@ -103,7 +103,7 @@ impl DataFlow {
     /// **Unless you know very well what you are doing, you should not use this method**.
     ///
     /// If the Sink is not correctly connected to upstream nodes, it will never receive data.
-    pub fn add_sink(&mut self, record: SinkRecord, factory: NodeFactoryFn) {
+    pub fn add_sink(&mut self, record: SinkRecord, factory: Arc<dyn Factory>) {
         self.sink_factories
             .insert(record.id.clone(), SinkFactory::new_static(record, factory));
     }

@@ -23,6 +23,7 @@ use zenoh_flow::model::record::{OperatorRecord, PortRecord, SinkRecord, SourceRe
 use zenoh_flow::runtime::dataflow::instance::DataFlowInstance;
 use zenoh_flow::runtime::dataflow::loader::{Loader, LoaderConfig};
 use zenoh_flow::runtime::RuntimeContext;
+use zenoh_flow::traits::Factory;
 use zenoh_flow::traits::ZFData;
 use zenoh_flow::types::{Configuration, Context, Inputs, Message, Outputs, Streams};
 use zenoh_flow::zenoh_flow_derive::ZFData;
@@ -83,6 +84,25 @@ impl CountSource {
             output,
             output_callback,
         }))
+    }
+}
+
+struct CountFactory(Receiver<()>);
+
+#[async_trait]
+impl Factory for CountFactory {
+    async fn make(
+        &self,
+        ctx: &mut Context,
+        config: &Option<Configuration>,
+        _inputs: Inputs,
+        outputs: Outputs,
+    ) -> Result<Option<Arc<dyn Node>>> {
+        match CountSource::make(ctx, config, outputs, self.0.clone()) {
+            Ok(Some(source)) => Ok(Some(Arc::new(source) as Arc<dyn Node>)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -167,6 +187,25 @@ impl Node for GenericSink {
     }
 }
 
+struct SinkFactory();
+
+#[async_trait]
+impl Factory for SinkFactory {
+    async fn make(
+        &self,
+        ctx: &mut Context,
+        config: &Option<Configuration>,
+        inputs: Inputs,
+        _outputs: Outputs,
+    ) -> Result<Option<Arc<dyn Node>>> {
+        match GenericSink::new(ctx, config, inputs) {
+            Ok(Some(sink)) => Ok(Some(Arc::new(sink) as Arc<dyn Node>)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+}
+
 // OPERATORS
 
 struct NoOp {
@@ -205,6 +244,27 @@ impl Node for NoOp {
         Ok(())
     }
 }
+
+struct NoOpFactory();
+
+#[async_trait]
+impl Factory for NoOpFactory {
+    async fn make(
+        &self,
+        ctx: &mut Context,
+        config: &Option<Configuration>,
+        inputs: Inputs,
+        outputs: Outputs,
+    ) -> Result<Option<Arc<dyn Node>>> {
+        match NoOp::new(ctx, config, inputs, outputs) {
+            Ok(Some(op)) => Ok(Some(Arc::new(op) as Arc<dyn Node>)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+//
 
 struct NoOpCallback();
 
@@ -245,6 +305,27 @@ impl Operator for NoOpCallback {
         Ok(None)
     }
 }
+
+struct NoOpCbFactory();
+
+#[async_trait]
+impl Factory for NoOpCbFactory {
+    async fn make(
+        &self,
+        ctx: &mut Context,
+        config: &Option<Configuration>,
+        inputs: Inputs,
+        outputs: Outputs,
+    ) -> Result<Option<Arc<dyn Node>>> {
+        match NoOpCallback::new(ctx, config, inputs, outputs) {
+            Ok(Some(_op)) => panic!("NoOpCallback is not supposed to return a Node!!!"),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+//
 
 // Run dataflow in single runtime
 async fn single_runtime() {
@@ -291,16 +372,7 @@ async fn single_runtime() {
         runtime: runtime_name.clone(),
     };
 
-    dataflow.add_source(
-        source_record,
-        Arc::new(move |ctx, config, _inputs, outputs| {
-            match CountSource::make(ctx, config, outputs, rx.clone()) {
-                Ok(Some(source)) => Ok(Some(Arc::new(source) as Arc<dyn Node>)),
-                Ok(None) => Ok(None),
-                Err(e) => Err(e),
-            }
-        }),
-    );
+    dataflow.add_source(source_record, Arc::new(CountFactory(rx)));
 
     let sink_record = SinkRecord {
         id: "generic-sink".into(),
@@ -322,16 +394,7 @@ async fn single_runtime() {
         runtime: runtime_name.clone(),
     };
 
-    dataflow.add_sink(
-        sink_record,
-        Arc::new(
-            move |ctx, config, inputs, _| match GenericSink::new(ctx, config, inputs) {
-                Ok(Some(sink)) => Ok(Some(Arc::new(sink) as Arc<dyn Node>)),
-                Ok(None) => Ok(None),
-                Err(e) => Err(e),
-            },
-        ),
-    );
+    dataflow.add_sink(sink_record, Arc::new(SinkFactory()));
 
     let no_op_record = OperatorRecord {
         id: "noop".into(),
@@ -351,16 +414,7 @@ async fn single_runtime() {
         runtime: runtime_name.clone(),
     };
 
-    dataflow.add_operator(
-        no_op_record,
-        Arc::new(move |ctx, config, inputs, outputs| {
-            match NoOp::new(ctx, config, inputs, outputs) {
-                Ok(Some(op)) => Ok(Some(Arc::new(op) as Arc<dyn Node>)),
-                Ok(None) => Ok(None),
-                Err(e) => Err(e),
-            }
-        }),
-    );
+    dataflow.add_operator(no_op_record, Arc::new(NoOpFactory()));
 
     let no_op_callback_record = OperatorRecord {
         id: "noop_callback".into(),
@@ -380,16 +434,7 @@ async fn single_runtime() {
         runtime: runtime_name.clone(),
     };
 
-    dataflow.add_operator(
-        no_op_callback_record,
-        Arc::new(move |ctx, config, inputs, outputs| {
-            match NoOpCallback::new(ctx, config, inputs, outputs) {
-                Ok(Some(_op)) => panic!("NoOpCallback is not supposed to return a Node!!!"),
-                Ok(None) => Ok(None),
-                Err(e) => Err(e),
-            }
-        }),
-    );
+    dataflow.add_operator(no_op_callback_record, Arc::new(NoOpCbFactory()));
 
     dataflow.add_link(
         OutputDescriptor {
