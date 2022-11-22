@@ -14,7 +14,6 @@
 
 use super::node::{OperatorFactory, SinkFactory, SourceFactory};
 use crate::model::record::{OperatorRecord, SinkRecord, SourceRecord};
-use crate::prelude::{Operator, Sink, Source};
 use crate::runtime::dataflow::NodeFactoryFn;
 use crate::types::Configuration;
 use crate::zfresult::ErrorKind;
@@ -48,37 +47,37 @@ pub static RUSTC_VERSION: &str = env!("RUSTC_VERSION");
 pub static EXT_FILE_EXTENSION: &str = "zfext";
 
 /// The alias to the function type created by the export macros.
-pub(crate) type ExportFn<T> = fn() -> NodeDeclaration<T>;
+pub(crate) type ExportFn = fn() -> NodeDeclaration;
 
-/// FactorySymbol groups the symbol we must find in the shared library we load.
-pub enum FactorySymbol {
+/// NodeSymbol groups the symbol we must find in the shared library we load.
+pub enum NodeSymbol {
     Source,
     Operator,
     Sink,
 }
 
-impl FactorySymbol {
+impl NodeSymbol {
     /// Returns the bytes representation of the symbol.
     ///
     /// They are of the form:
     ///
-    /// `b"zf<node_kind>_factory_declaration\0"`
+    /// `b"_zf_export_<node_kind>\0"`
     ///
     /// Where `<node_kind>` is either `operator`, `source`, or `sink`.
     pub(crate) fn to_bytes(&self) -> &[u8] {
         match self {
-            FactorySymbol::Source => b"_zf_export_source\0",
-            FactorySymbol::Operator => b"_zf_export_operator\0",
-            FactorySymbol::Sink => b"_zf_export_sink\0",
+            NodeSymbol::Source => b"_zf_export_source\0",
+            NodeSymbol::Operator => b"_zf_export_operator\0",
+            NodeSymbol::Sink => b"_zf_export_sink\0",
         }
     }
 }
 
 /// Declaration expected in the library that will be loaded.
-pub struct NodeDeclaration<T: ?Sized> {
+pub struct NodeDeclaration {
     pub rustc_version: &'static str,
     pub core_version: &'static str,
-    pub register: NodeFactoryFn<T>,
+    pub register: NodeFactoryFn,
 }
 
 /// Extensible support for different implementations
@@ -201,24 +200,24 @@ impl Loader {
         Self { config }
     }
 
-    /// Loads a factory library, using one of the extension configured within the loader.
+    /// Loads a node library, using one of the extension configured within the loader.
     ///
     /// # Errors
     ///
     /// It can fail because of:
-    /// - different version of Zenoh-Flow used to build the factory
-    /// - different version of the rust compiler used to build the factory
+    /// - different version of Zenoh-Flow used to build the node
+    /// - different version of the rust compiler used to build the node
     /// - the library does not contain the symbols
     /// - the URI is missing
     /// - the URI scheme is not known (so far only `file://` is supported)
     /// - the extension is not known
-    /// - the factory does not match the extension interface
-    unsafe fn load_factory<T: ?Sized>(
+    /// - the node does not match the extension interface
+    unsafe fn load_node(
         &self,
-        factory_symbol: FactorySymbol,
+        factory_symbol: NodeSymbol,
         uri: &str,
         configuration: &mut Option<Configuration>,
-    ) -> Result<(Library, NodeFactoryFn<T>)> {
+    ) -> Result<(Library, NodeFactoryFn)> {
         let uri = Url::parse(uri).map_err(|err| zferror!(ErrorKind::ParsingError, err))?;
 
         match uri.scheme() {
@@ -243,9 +242,9 @@ impl Loader {
                                 &file_path,
                             )?;
                             let lib = match factory_symbol {
-                                FactorySymbol::Source => &e.source_lib,
-                                FactorySymbol::Operator => &e.operator_lib,
-                                FactorySymbol::Sink => &e.sink_lib,
+                                NodeSymbol::Source => &e.source_lib,
+                                NodeSymbol::Operator => &e.operator_lib,
+                                NodeSymbol::Sink => &e.sink_lib,
                             };
                             std::fs::canonicalize(lib)?
                         }
@@ -261,7 +260,7 @@ impl Loader {
                 #[cfg(target_family = "windows")]
                 let library = Library::new(library_path)?;
 
-                let export_fn = library.get::<ExportFn<T>>(factory_symbol.to_bytes())?;
+                let export_fn = library.get::<ExportFn>(factory_symbol.to_bytes())?;
                 let decl = (export_fn)();
 
                 // version checks to prevent accidental ABI incompatibilities
@@ -276,7 +275,7 @@ impl Loader {
         }
     }
 
-    /// Tries to load a SourceFactory from the information passed within the
+    /// Tries to load a Source from the information passed within the
     /// [`SourceRecord`](`SourceRecord`).
     ///
     /// # Errors
@@ -289,13 +288,8 @@ impl Loader {
     /// - the URI scheme is not known (so far only `file://` is supported).
     pub(crate) fn load_source_factory(&self, mut record: SourceRecord) -> Result<SourceFactory> {
         if let Some(uri) = &record.uri {
-            let (library, factory) = unsafe {
-                self.load_factory::<dyn Source>(
-                    FactorySymbol::Source,
-                    uri,
-                    &mut record.configuration,
-                )?
-            };
+            let (library, factory) =
+                unsafe { self.load_node(NodeSymbol::Source, uri, &mut record.configuration)? };
 
             Ok(SourceFactory::new_dynamic(
                 record,
@@ -311,7 +305,7 @@ impl Loader {
         }
     }
 
-    /// Tries to load an OperatorFactory from the information passed within the
+    /// Tries to load an Operator from the information passed within the
     /// [`OperatorRecord`](`OperatorRecord`).
     ///
     ///
@@ -328,13 +322,8 @@ impl Loader {
         mut record: OperatorRecord,
     ) -> Result<OperatorFactory> {
         if let Some(uri) = &record.uri {
-            let (library, factory) = unsafe {
-                self.load_factory::<dyn Operator>(
-                    FactorySymbol::Operator,
-                    uri,
-                    &mut record.configuration,
-                )?
-            };
+            let (library, factory) =
+                unsafe { self.load_node(NodeSymbol::Operator, uri, &mut record.configuration)? };
 
             Ok(OperatorFactory::new_dynamic(
                 record,
@@ -350,7 +339,7 @@ impl Loader {
         }
     }
 
-    /// Tries to load a SinkFactory from the information passed within the
+    /// Tries to load a Sink from the information passed within the
     /// [`SinkRecord`](`SinkRecord`).
     ///
     /// # Errors
@@ -363,9 +352,8 @@ impl Loader {
     /// - the URI scheme is not known (so far only `file://` is known).
     pub(crate) fn load_sink_factory(&self, mut record: SinkRecord) -> Result<SinkFactory> {
         if let Some(uri) = &record.uri {
-            let (library, factory) = unsafe {
-                self.load_factory::<dyn Sink>(FactorySymbol::Sink, uri, &mut record.configuration)?
-            };
+            let (library, factory) =
+                unsafe { self.load_node(NodeSymbol::Sink, uri, &mut record.configuration)? };
 
             Ok(SinkFactory::new_dynamic(record, factory, Arc::new(library)))
         } else {

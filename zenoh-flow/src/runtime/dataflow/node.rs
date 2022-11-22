@@ -14,9 +14,10 @@
 
 use crate::model::record::{OperatorRecord, SinkRecord, SourceRecord};
 use crate::prelude::{Configuration, Context, Inputs, Outputs};
-use crate::traits;
+use crate::traits::Node;
 use std::ops::Deref;
 use std::sync::Arc;
+
 
 #[cfg(target_family = "unix")]
 use libloading::os::unix::Library;
@@ -61,8 +62,8 @@ where
 ///  i.e. an object that implement the `Node` trait.
 /// This type is intended for internal use in order to create a data flow programmatically.
 ///
-pub type NodeFactoryFn<T> = Arc<
-    dyn Fn(&mut Context, &Option<Configuration>, Inputs, Outputs) -> ZFResult<Option<Arc<T>>>
+pub type NodeFactoryFn = Arc<
+    dyn Fn(&mut Context, &Option<Configuration>, Inputs, Outputs) -> ZFResult<Option<Arc<dyn Node>>>
         + Send
         + Sync,
 >;
@@ -72,15 +73,15 @@ pub type NodeFactoryFn<T> = Arc<
 /// The `record` holds the metadata associated with the Node. The `factory` is the object that
 /// produces the Nodes. The `_library` is a reference over the dynamically loaded shared library. It
 /// can be `None` when the factory is created programmatically.
-pub(crate) struct NodeFactory<U, T: ?Sized> {
+pub(crate) struct NodeFactory<U> {
     pub(crate) record: U,
-    pub(crate) factory: NodeFactoryFn<T>,
+    pub(crate) factory: NodeFactoryFn,
     _library: Option<Arc<Library>>,
 }
 
 /// Dereferencing to the record (the generic `U`) allows for an easy access to the metadata of the
 /// node.
-impl<U, T: ?Sized> Deref for NodeFactory<U, T> {
+impl<U> Deref for NodeFactory<U> {
     type Target = U;
 
     fn deref(&self) -> &Self::Target {
@@ -88,11 +89,11 @@ impl<U, T: ?Sized> Deref for NodeFactory<U, T> {
     }
 }
 
-impl<U, T: traits::Node + ?Sized> NodeFactory<U, T> {
+impl<U> NodeFactory<U> {
     /// Creates a NodeFactory without a `library`.
     ///
     /// This function is intended for internal use in order to create a data flow programmatically.
-    pub(crate) fn new_static(record: U, factory: NodeFactoryFn<T>) -> Self {
+    pub(crate) fn new_static(record: U, factory: NodeFactoryFn) -> Self {
         Self {
             record,
             factory,
@@ -100,7 +101,7 @@ impl<U, T: traits::Node + ?Sized> NodeFactory<U, T> {
         }
     }
 
-    pub(crate) fn new_dynamic(record: U, factory: NodeFactoryFn<T>, library: Arc<Library>) -> Self {
+    pub(crate) fn new_dynamic(record: U, factory: NodeFactoryFn, library: Arc<Library>) -> Self {
         Self {
             record,
             factory,
@@ -110,13 +111,13 @@ impl<U, T: traits::Node + ?Sized> NodeFactory<U, T> {
 }
 
 /// A `SourceFactory` is a specialized `NodeFactory` generating Source.
-pub(crate) type SourceFactory = NodeFactory<SourceRecord, dyn traits::Source>;
+pub(crate) type SourceFactory = NodeFactory<SourceRecord>;
 
 /// An `OperatorFactory` is a specialized `NodeFactory` generating Operator.
-pub(crate) type OperatorFactory = NodeFactory<OperatorRecord, dyn traits::Operator>;
+pub(crate) type OperatorFactory = NodeFactory<OperatorRecord>;
 
 /// A `SinkFactory` is a specialized `NodeFactory` generating Sink.
-pub(crate) type SinkFactory = NodeFactory<SinkRecord, dyn traits::Sink>;
+pub(crate) type SinkFactory = NodeFactory<SinkRecord>;
 
 // /// A `NodeFactory` generates `Node`, i.e. objects that implement the `Node` trait.
 // ///

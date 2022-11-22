@@ -20,7 +20,6 @@ use futures::Future;
 use std::any::Any;
 use std::fmt::Debug;
 use std::pin::Pin;
-use std::sync::Arc;
 
 /// This trait is used to ensure the data can donwcast to [`Any`](`Any`)
 /// NOTE: This trait is separate from `ZFData` so that we can provide
@@ -140,7 +139,10 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///         let output = outputs.take(SOURCE).unwrap();
 ///         Ok(Some(Self{output}))
 ///     }
+/// }
 ///
+/// #[async_trait::async_trait]
+/// impl Node for MySource {
 ///   async fn iteration(&self) -> Result<()> {
 ///     // To mutate the state, first lock it.
 ///     // let state = self.state.lock().await;
@@ -169,22 +171,6 @@ pub trait Source: Send + Sync {
     ) -> ZFResult<Option<Self>>
     where
         Self: Sized;
-
-    /// The `iteration` that is repeatedly called by Zenoh-Flow.
-    /// Here the source can interact with the extrnal world and send
-    /// data over its outputs.
-    async fn iteration(&self) -> ZFResult<()>;
-}
-
-/// A `CastSource` is an internal structure used to foster code reuse
-/// in the runtime. I.e., it allows all `Source`s to be `Node`s.
-pub(crate) struct CastSource(pub(crate) Arc<dyn Source>);
-
-#[async_trait]
-impl Node for CastSource {
-    async fn iteration(&self) -> ZFResult<()> {
-        self.0.iteration().await
-    }
 }
 
 /// The `Sink` trait represents a Sink of data in Zenoh Flow.
@@ -222,7 +208,10 @@ impl Node for CastSource {
 ///             input,
 ///         }))
 ///     }
+/// }
 ///
+/// #[async_trait]
+/// impl Node for GenericSink {
 ///     async fn iteration(&self) -> Result<()> {
 ///
 ///         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
@@ -249,22 +238,6 @@ pub trait Sink: Send + Sync {
     ) -> ZFResult<Option<Self>>
     where
         Self: Sized;
-
-    /// The `iteration` that is repeatedly called by Zenoh-Flow.
-    /// Here the source can interact with the extrnal world and retrieve
-    /// data from its inputs.
-    async fn iteration(&self) -> ZFResult<()>;
-}
-
-/// A `CastSink` is an internal structure used to foster code reuse
-/// in the runtime. I.e., it allows all `Sink`s to be `Node`s.
-pub(crate) struct CastSink(pub(crate) Arc<dyn Sink>);
-
-#[async_trait]
-impl Node for CastSink {
-    async fn iteration(&self) -> ZFResult<()> {
-        self.0.iteration().await
-    }
 }
 
 /// The `Operator` trait represents an Operator inside Zenoh Flow.
@@ -303,7 +276,9 @@ impl Node for CastSink {
 ///             output: outputs.take(DESTINATION).unwrap(),
 ///         }))
 ///     }
-///
+/// }
+/// #[async_trait]
+/// impl Node for NoOp {
 ///     async fn iteration(&self) -> Result<()> {
 ///         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
 ///             self.output.send_async((*msg).clone(), None).await?;
@@ -329,22 +304,6 @@ pub trait Operator: Send + Sync {
     ) -> ZFResult<Option<Self>>
     where
         Self: Sized;
-
-    /// The `iteration` that is repeatedly called by Zenoh-Flow.
-    /// Here the operator can interact retrieve data from its inputs,
-    /// compute over them, and send the results on its outputs.
-    async fn iteration(&self) -> ZFResult<()>;
-}
-
-/// A `CastOperator` is an internal structure used to foster code reuse
-/// in the runtime. I.e., it allows all `Operator`s to be `Node`s.
-pub(crate) struct CastOperator(pub(crate) Arc<dyn Operator>);
-
-#[async_trait]
-impl Node for CastOperator {
-    async fn iteration(&self) -> ZFResult<()> {
-        self.0.iteration().await
-    }
 }
 
 /// A `Node` is defined by its `iteration` that is repeatedly called by Zenoh-Flow.
@@ -355,32 +314,11 @@ impl Node for CastOperator {
 /// A struct implementing the Node trait typically needs to keep a reference to the `Input` and
 /// `Output` it needs.
 ///
-/// * Note: * not intended to be directly used by users.
+/// For usage examples see [`Operator`](`Operator`), [`Source`](`Source`) or [`Sink`](`Sink`) traits.
 /// ```
 #[async_trait]
 pub trait Node: Send + Sync {
     async fn iteration(&self) -> ZFResult<()>;
-}
-
-#[async_trait]
-impl Node for dyn Source {
-    async fn iteration(&self) -> ZFResult<()> {
-        Source::iteration(self).await
-    }
-}
-
-#[async_trait]
-impl Node for dyn Sink {
-    async fn iteration(&self) -> ZFResult<()> {
-        Sink::iteration(self).await
-    }
-}
-
-#[async_trait]
-impl Node for dyn Operator {
-    async fn iteration(&self) -> ZFResult<()> {
-        Operator::iteration(self).await
-    }
 }
 
 /// Trait wrapping an async closures for sender callback, it requires rust-nightly because of
