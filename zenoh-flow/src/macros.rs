@@ -36,7 +36,10 @@
 ///    Self: Sized {
 ///         todo!()
 ///     }
+/// }
 ///
+/// #[async_trait]
+/// impl Node for MyOperator {
 ///     async fn iteration(&self) -> Result<()> {
 ///         todo!()
 ///     }
@@ -50,15 +53,14 @@ macro_rules! export_operator {
     ($factory:path) => {
         #[doc(hidden)]
         #[no_mangle]
-        fn _zf_export_operator(
-        ) -> $crate::runtime::dataflow::loader::NodeDeclaration<$crate::traits::Operator> {
-            $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Operator> {
+        fn _zf_export_operator() -> $crate::runtime::dataflow::loader::NodeDeclaration {
+            $crate::runtime::dataflow::loader::NodeDeclaration {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
                 register: Arc::new(|ctx, configuration, inputs, outputs| {
                     match <$factory>::new(ctx, configuration, inputs, outputs) {
                         Ok(Some(operator)) => {
-                            Ok(Some(Arc::new(operator) as Arc<dyn $crate::traits::Operator>))
+                            Ok(Some(Arc::new(operator) as Arc<dyn $crate::traits::Node>))
                         }
                         Ok(None) => Ok(None),
                         Err(e) => Err(e),
@@ -90,7 +92,10 @@ macro_rules! export_operator {
 ///   ) -> Result<Option<Self>> {
 ///         todo!()
 ///     }
+/// }
 ///
+/// #[async_trait]
+/// impl Node for MySink {
 ///     async fn iteration(&self) -> Result<()> {
 ///         todo!()
 ///     }
@@ -104,9 +109,8 @@ macro_rules! export_sink {
     ($factory:path) => {
         #[doc(hidden)]
         #[no_mangle]
-        fn _zf_export_sink(
-        ) -> $crate::runtime::dataflow::loader::NodeDeclaration<$crate::traits::Sink> {
-            $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Sink> {
+        fn _zf_export_sink() -> $crate::runtime::dataflow::loader::NodeDeclaration {
+            $crate::runtime::dataflow::loader::NodeDeclaration {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
                 register: std::sync::Arc::new(
@@ -116,7 +120,7 @@ macro_rules! export_sink {
                         inputs,
                     ) {
                         Ok(Some(sink)) => Ok(Some(
-                            std::sync::Arc::new(sink) as Arc<dyn $crate::traits::Sink>
+                            std::sync::Arc::new(sink) as Arc<dyn $crate::traits::Node>
                         )),
                         Ok(None) => Ok(None),
                         Err(e) => Err(e),
@@ -148,7 +152,10 @@ macro_rules! export_sink {
 ///   ) -> Result<Option<Self>> {
 ///         todo!()
 ///     }
+/// }
 ///
+/// #[async_trait]
+/// impl Node for MySource {
 ///     async fn iteration(&self) -> Result<()> {
 ///         todo!()
 ///     }
@@ -162,9 +169,8 @@ macro_rules! export_source {
     ($factory:path) => {
         #[doc(hidden)]
         #[no_mangle]
-        fn _zf_export_source(
-        ) -> $crate::runtime::dataflow::loader::NodeDeclaration<$crate::traits::Source> {
-            $crate::runtime::dataflow::loader::NodeDeclaration::<$crate::traits::Source> {
+        fn _zf_export_source() -> $crate::runtime::dataflow::loader::NodeDeclaration {
+            $crate::runtime::dataflow::loader::NodeDeclaration {
                 rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
                 core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
                 register: std::sync::Arc::new(
@@ -174,7 +180,7 @@ macro_rules! export_source {
                         outputs,
                     ) {
                         Ok(Some(source)) => Ok(Some(
-                            std::sync::Arc::new(source) as Arc<dyn $crate::traits::Source>
+                            std::sync::Arc::new(source) as Arc<dyn $crate::traits::Node>
                         )),
                         Ok(None) => Ok(None),
                         Err(e) => Err(e),

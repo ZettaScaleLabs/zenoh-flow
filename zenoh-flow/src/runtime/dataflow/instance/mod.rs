@@ -20,7 +20,6 @@ use super::DataFlow;
 use crate::model::record::{LinkRecord, ZFConnectorKind};
 use crate::prelude::{Context, Node};
 use crate::runtime::InstanceContext;
-use crate::traits::{CastOperator, CastSink, CastSource};
 use crate::types::{Input, Inputs, NodeId, Output, Outputs};
 use crate::zfresult::ErrorKind;
 use crate::Result;
@@ -193,10 +192,10 @@ impl DataFlowInstance {
                 outputs,
             )?;
 
-            let source: Option<Arc<dyn Node>> = match source {
-                Some(source) => Some(Arc::new(CastSource(source))),
-                None => None,
-            };
+            // let source: Option<Arc<dyn Node>> = match source {
+            //     Some(source) => Some(Arc::new(source)),
+            //     None => None,
+            // };
 
             let runner = Runner::new(source, context.inputs_callbacks, context.outputs_callbacks);
             runners.insert(source_id.clone(), runner);
@@ -219,10 +218,10 @@ impl DataFlowInstance {
                 outputs,
             )?;
 
-            let operator: Option<Arc<dyn Node>> = match operator {
-                Some(operator) => Some(Arc::new(CastOperator(operator))),
-                None => None,
-            };
+            // let operator: Option<Arc<dyn Node>> = match operator {
+            //     Some(operator) => Some(Arc::new(operator)),
+            //     None => None,
+            // };
 
             let runner = Runner::new(
                 operator,
@@ -249,10 +248,10 @@ impl DataFlowInstance {
                 HashMap::new(),
             )?;
 
-            let sink: Option<Arc<dyn Node>> = match sink {
-                Some(sink) => Some(Arc::new(CastSink(sink))),
-                None => None,
-            };
+            // let sink: Option<Arc<dyn Node>> = match sink {
+            //     Some(sink) => Some(Arc::new(sink)),
+            //     None => None,
+            // };
 
             let runner = Runner::new(sink, context.inputs_callbacks, context.outputs_callbacks);
             runners.insert(sink_id.clone(), runner);

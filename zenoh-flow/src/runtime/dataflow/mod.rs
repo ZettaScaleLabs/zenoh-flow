@@ -28,7 +28,6 @@ use crate::model::record::{
 use self::node::{OperatorFactory, SinkFactory, SourceFactory};
 use crate::model::descriptor::{InputDescriptor, OutputDescriptor};
 use crate::runtime::RuntimeContext;
-use crate::traits;
 use crate::types::NodeId;
 use crate::Result as ZFResult;
 
@@ -73,53 +72,38 @@ impl DataFlow {
         }
     }
 
-    /// Add a `SourceFactory` to the `DataFlow`.
+    /// Add a `Source` to the `DataFlow`.
     ///
     /// **Unless you know very well what you are doing, you should not use this method**.
     ///
     /// If the Source is not correctly connected to downstream nodes, its data will never be
     /// received.
-    pub fn add_source_factory(
-        &mut self,
-        record: SourceRecord,
-        // factory: Arc<dyn crate::runtime::dataflow::AsyncNodeFactoryFn<dyn traits::Source>>,
-        factory: NodeFactoryFn<dyn traits::Source>,
-    ) {
+    pub fn add_source(&mut self, record: SourceRecord, factory: NodeFactoryFn) {
         self.source_factories.insert(
             record.id.clone(),
             SourceFactory::new_static(record, factory),
         );
     }
 
-    /// Add an `OperatorFactory` to the `DataFlow`.
+    /// Add an `Operator` to the `DataFlow`.
     ///
     /// **Unless you know very well what you are doing, you should not use this method**.
     ///
     /// If the Operator is not correctly connected to upstream and downstream nodes, it will never
     /// receive, process and emit data.
-    pub fn add_operator_factory(
-        &mut self,
-        record: OperatorRecord,
-        // factory: Arc<dyn crate::runtime::dataflow::AsyncNodeFactoryFn<dyn traits::Operator>>,
-        factory: NodeFactoryFn<dyn traits::Operator>,
-    ) {
+    pub fn add_operator(&mut self, record: OperatorRecord, factory: NodeFactoryFn) {
         self.operator_factories.insert(
             record.id.clone(),
             OperatorFactory::new_static(record, factory),
         );
     }
 
-    /// Add a `SinkFactory` to the `DataFlow`.
+    /// Add a `Sink` to the `DataFlow`.
     ///
     /// **Unless you know very well what you are doing, you should not use this method**.
     ///
     /// If the Sink is not correctly connected to upstream nodes, it will never receive data.
-    pub fn add_sink_factory(
-        &mut self,
-        record: SinkRecord,
-        // factory: Arc<dyn crate::runtime::dataflow::AsyncNodeFactoryFn<dyn traits::Sink>>,
-        factory: NodeFactoryFn<dyn traits::Sink>,
-    ) {
+    pub fn add_sink(&mut self, record: SinkRecord, factory: NodeFactoryFn) {
         self.sink_factories
             .insert(record.id.clone(), SinkFactory::new_static(record, factory));
     }

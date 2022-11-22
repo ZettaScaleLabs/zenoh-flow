@@ -95,6 +95,10 @@ impl Source for CountSource {
     ) -> Result<Option<Self>> {
         bail!(ErrorKind::Unsupported, "Use CountSource::make(..) instead")
     }
+}
+
+#[async_trait]
+impl Node for CountSource {
     async fn iteration(&self) -> Result<()> {
         println!("[CountSource] iteration being");
         self.rx.recv_async().await.unwrap();
@@ -140,7 +144,10 @@ impl Sink for GenericSink {
             input_callback,
         }))
     }
+}
 
+#[async_trait]
+impl Node for GenericSink {
     async fn iteration(&self) -> Result<()> {
         println!("[GenericSink] iteration being");
         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
@@ -181,7 +188,10 @@ impl Operator for NoOp {
             output: outputs.take(DESTINATION).unwrap(),
         }))
     }
+}
 
+#[async_trait]
+impl Node for NoOp {
     async fn iteration(&self) -> Result<()> {
         println!("[NoOp] iteration being");
         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
@@ -234,11 +244,6 @@ impl Operator for NoOpCallback {
 
         Ok(None)
     }
-
-    async fn iteration(&self) -> Result<()> {
-        async_std::task::sleep(std::time::Duration::from_secs(1)).await;
-        Ok(())
-    }
 }
 
 // Run dataflow in single runtime
@@ -286,17 +291,16 @@ async fn single_runtime() {
         runtime: runtime_name.clone(),
     };
 
-    dataflow.add_source_factory(
+    dataflow.add_source(
         source_record,
         Arc::new(move |ctx, config, _inputs, outputs| {
             match CountSource::make(ctx, config, outputs, rx.clone()) {
-                Ok(Some(source)) => Ok(Some(Arc::new(source) as Arc<dyn Source>)),
+                Ok(Some(source)) => Ok(Some(Arc::new(source) as Arc<dyn Node>)),
                 Ok(None) => Ok(None),
                 Err(e) => Err(e),
             }
         }),
     );
-    // dataflow.add_source_factory(source_record, Arc::new(CountSourceFactory { rx }));
 
     let sink_record = SinkRecord {
         id: "generic-sink".into(),
@@ -318,12 +322,11 @@ async fn single_runtime() {
         runtime: runtime_name.clone(),
     };
 
-    // dataflow.add_sink_factory(sink_record, Arc::new(GenericSinkFactory));
-    dataflow.add_sink_factory(
+    dataflow.add_sink(
         sink_record,
         Arc::new(
             move |ctx, config, inputs, _| match GenericSink::new(ctx, config, inputs) {
-                Ok(Some(sink)) => Ok(Some(Arc::new(sink) as Arc<dyn Sink>)),
+                Ok(Some(sink)) => Ok(Some(Arc::new(sink) as Arc<dyn Node>)),
                 Ok(None) => Ok(None),
                 Err(e) => Err(e),
             },
@@ -348,12 +351,11 @@ async fn single_runtime() {
         runtime: runtime_name.clone(),
     };
 
-    // dataflow.add_operator_factory(no_op_record, Arc::new(NoOpFactory));
-    dataflow.add_operator_factory(
+    dataflow.add_operator(
         no_op_record,
         Arc::new(move |ctx, config, inputs, outputs| {
             match NoOp::new(ctx, config, inputs, outputs) {
-                Ok(Some(op)) => Ok(Some(Arc::new(op) as Arc<dyn Operator>)),
+                Ok(Some(op)) => Ok(Some(Arc::new(op) as Arc<dyn Node>)),
                 Ok(None) => Ok(None),
                 Err(e) => Err(e),
             }
@@ -378,12 +380,11 @@ async fn single_runtime() {
         runtime: runtime_name.clone(),
     };
 
-    // dataflow.add_operator_factory(no_op_callback_record, Arc::new(NoOpCallbackFactory));
-    dataflow.add_operator_factory(
+    dataflow.add_operator(
         no_op_callback_record,
         Arc::new(move |ctx, config, inputs, outputs| {
             match NoOpCallback::new(ctx, config, inputs, outputs) {
-                Ok(Some(op)) => Ok(Some(Arc::new(op) as Arc<dyn Operator>)),
+                Ok(Some(_op)) => panic!("NoOpCallback is not supposed to return a Node!!!"),
                 Ok(None) => Ok(None),
                 Err(e) => Err(e),
             }
