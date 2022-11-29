@@ -200,7 +200,7 @@ impl DataFlowInstance {
             //     None => None,
             // };
 
-            let runner = Runner::new(source, context.inputs_callbacks, context.outputs_callbacks);
+            let runner = Runner::new(source);
             runners.insert(source_id.clone(), runner);
         }
 
@@ -229,11 +229,7 @@ impl DataFlowInstance {
             //     None => None,
             // };
 
-            let runner = Runner::new(
-                operator,
-                context.inputs_callbacks,
-                context.outputs_callbacks,
-            );
+            let runner = Runner::new(operator);
             runners.insert(operator_id.clone(), runner);
         }
 
@@ -262,7 +258,7 @@ impl DataFlowInstance {
             //     None => None,
             // };
 
-            let runner = Runner::new(sink, context.inputs_callbacks, context.outputs_callbacks);
+            let runner = Runner::new(sink);
             runners.insert(sink_id.clone(), runner);
         }
 
@@ -277,10 +273,8 @@ impl DataFlowInstance {
                             connector_id
                         )
                     })?;
-                    Some(
-                        Arc::new(ZenohSender::new(connector_record, session, inputs).await?)
-                            as Arc<dyn Node>,
-                    )
+                    Arc::new(ZenohSender::new(connector_record, session, inputs).await?)
+                        as Arc<dyn Node>
                 }
                 ZFConnectorKind::Receiver => {
                     let (_, outputs) = links.remove(connector_id).ok_or_else(|| {
@@ -290,14 +284,12 @@ impl DataFlowInstance {
                             &connector_id
                         )
                     })?;
-                    Some(
-                        Arc::new(ZenohReceiver::new(connector_record, session, outputs).await?)
-                            as Arc<dyn Node>,
-                    )
+                    Arc::new(ZenohReceiver::new(connector_record, session, outputs).await?)
+                        as Arc<dyn Node>
                 }
             };
 
-            let runner = Runner::new(node, vec![], vec![]);
+            let runner = Runner::new(node);
             runners.insert(connector_id.clone(), runner);
         }
 
@@ -308,6 +300,7 @@ impl DataFlowInstance {
         })
     }
 }
+
 /// Creates the [`Link`](`Link`) between the `nodes` using `links`.
 ///
 /// # Errors

@@ -12,14 +12,12 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::prelude::{Data, Inputs, Message, Outputs};
+use crate::prelude::{Inputs, Outputs};
 use crate::types::{Configuration, Context};
 use crate::Result as ZFResult;
 use async_trait::async_trait;
-use futures::Future;
 use std::any::Any;
 use std::fmt::Debug;
-use std::pin::Pin;
 use std::sync::Arc;
 
 /// This trait is used to ensure the data can donwcast to [`Any`](`Any`)
@@ -136,9 +134,9 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///        _context: &mut Context,
 ///        _configuration: &Option<Configuration>,
 ///        mut outputs: Outputs,
-///     ) -> Result<Option<Self>> {
+///     ) -> Result<Self> {
 ///         let output = outputs.take(SOURCE).unwrap();
-///         Ok(Some(Self{output}))
+///         Ok(Self { output })
 ///     }
 /// }
 ///
@@ -169,7 +167,7 @@ pub trait Source: Send + Sync {
         context: &mut Context,
         configuration: &Option<Configuration>,
         outputs: Outputs,
-    ) -> ZFResult<Option<Self>>
+    ) -> ZFResult<Self>
     where
         Self: Sized;
 }
@@ -202,12 +200,12 @@ pub trait Source: Send + Sync {
 ///         _context: &mut Context,
 ///         _configuration: &Option<Configuration>,
 ///         mut inputs: Inputs,
-///     ) -> Result<Option<Self>> {
+///     ) -> Result<Self> {
 ///         let input = inputs.take(SOURCE).unwrap();
 ///
-///         Ok(Some(GenericSink {
+///         Ok(GenericSink {
 ///             input,
-///         }))
+///         })
 ///     }
 /// }
 ///
@@ -236,7 +234,7 @@ pub trait Sink: Send + Sync {
         context: &mut Context,
         configuration: &Option<Configuration>,
         inputs: Inputs,
-    ) -> ZFResult<Option<Self>>
+    ) -> ZFResult<Self>
     where
         Self: Sized;
 }
@@ -271,11 +269,11 @@ pub trait Sink: Send + Sync {
 ///         _configuration: &Option<Configuration>,
 ///         mut inputs: Inputs,
 ///         mut outputs: Outputs,
-///     ) -> Result<Option<Self>> {
-///         Ok(Some(NoOp {
+///     ) -> Result<Self> {
+///         Ok(NoOp {
 ///             input: inputs.take(SOURCE).unwrap(),
 ///             output: outputs.take(DESTINATION).unwrap(),
-///         }))
+///         })
 ///     }
 /// }
 /// #[async_trait]
@@ -302,7 +300,7 @@ pub trait Operator: Send + Sync {
         configuration: &Option<Configuration>,
         inputs: Inputs,
         outputs: Outputs,
-    ) -> ZFResult<Option<Self>>
+    ) -> ZFResult<Self>
     where
         Self: Sized;
 }
@@ -334,79 +332,5 @@ pub trait Factory: Send + Sync {
         configuration: &Option<Configuration>,
         inputs: Inputs,
         outputs: Outputs,
-    ) -> ZFResult<Option<Arc<dyn Node>>>;
-}
-
-/// Trait wrapping an async closures for sender callback, it requires rust-nightly because of
-/// https://github.com/rust-lang/rust/issues/62290
-///
-/// * Note: * not intended to be directly used by users.
-type AsyncCallbackOutput = ZFResult<(Data, Option<u64>)>;
-
-pub trait AsyncCallbackTx: Send + Sync {
-    fn call(&self) -> Pin<Box<dyn Future<Output = AsyncCallbackOutput> + Send + Sync + 'static>>;
-}
-
-/// Implementation of AsyncCallbackTx for any async closure that returns
-/// `ZFResult<()>`.
-/// This "converts" any `async move { ... }` to `AsyncCallbackTx`
-///
-/// *Note:* It takes an `FnOnce` because of the `move` keyword. The closure
-/// has to be `Clone` as we are going to call the closure more than once.
-impl<Fut, Fun> AsyncCallbackTx for Fun
-where
-    Fun: Fn() -> Fut + Sync + Send,
-    Fut: Future<Output = ZFResult<(Data, Option<u64>)>> + Send + Sync + 'static,
-{
-    fn call(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = ZFResult<(Data, Option<u64>)>> + Send + Sync + 'static>> {
-        Box::pin((self)())
-    }
-}
-
-/// Trait describing the functions we are expecting to call upon receiving a message.
-///
-/// NOTE: Users are encouraged to provide a closure instead of implementing this trait.
-pub trait InputCallback: Send + Sync {
-    fn call(
-        &self,
-        arg: Message,
-    ) -> Pin<Box<dyn Future<Output = ZFResult<()>> + Send + Sync + 'static>>;
-}
-
-/// Implementation of InputCallback for any async closure that takes `Message` as parameter and
-/// returns `ZFResult<()>`. This "converts" any `async move |msg| { ... Ok() }` into an
-/// `InputCallback`.
-///
-/// This allows users to provide a closure instead of implementing the trait.
-impl<Fut, Fun> InputCallback for Fun
-where
-    Fun: Fn(Message) -> Fut + Sync + Send,
-    Fut: Future<Output = ZFResult<()>> + Send + Sync + 'static,
-{
-    fn call(
-        &self,
-        message: Message,
-    ) -> Pin<Box<dyn Future<Output = ZFResult<()>> + Send + Sync + 'static>> {
-        Box::pin((self)(message))
-    }
-}
-
-/// TODO Documentation: Output callback expects nothing (except for a trigger) and returns some
-/// Data. As it’s a callback, Zenoh-Flow will take care of sending it.
-pub trait OutputCallback: Send + Sync {
-    fn call(&self) -> Pin<Box<dyn Future<Output = ZFResult<Data>> + Send + Sync + 'static>>;
-}
-
-/// TODO Documentation: implementation of OutputCallback for closures, it makes it easier to write
-/// these functions.
-impl<Fut, Fun> OutputCallback for Fun
-where
-    Fun: Fn() -> Fut + Sync + Send,
-    Fut: Future<Output = ZFResult<Data>> + Send + Sync + 'static,
-{
-    fn call(&self) -> Pin<Box<dyn Future<Output = ZFResult<Data>> + Send + Sync + 'static>> {
-        Box::pin((self)())
-    }
+    ) -> ZFResult<Arc<dyn Node>>;
 }
