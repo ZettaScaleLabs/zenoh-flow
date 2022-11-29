@@ -12,15 +12,16 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use super::node::{OperatorFactory, SinkFactory, SourceFactory};
+use super::node::{
+    ConstructorFn, OperatorConstructor, OperatorFn, SinkConstructor, SinkFn, SourceConstructor,
+    SourceFn,
+};
 use crate::model::record::{OperatorRecord, SinkRecord, SourceRecord};
-use crate::traits::Factory;
 use crate::types::Configuration;
 use crate::zfresult::ErrorKind;
 use crate::Result;
 use crate::{bail, zferror};
 use serde::{Deserialize, Serialize};
-
 use std::sync::Arc;
 
 #[cfg(target_family = "unix")]
@@ -46,11 +47,8 @@ pub static RUSTC_VERSION: &str = env!("RUSTC_VERSION");
 
 pub static EXT_FILE_EXTENSION: &str = "zfext";
 
-/// The alias to the function type created by the export macros.
-pub(crate) type ExportFn = fn() -> NodeDeclaration;
-
 /// NodeSymbol groups the symbol we must find in the shared library we load.
-pub enum NodeSymbol {
+pub(crate) enum NodeSymbol {
     Source,
     Operator,
     Sink,
@@ -74,11 +72,15 @@ impl NodeSymbol {
 }
 
 /// Declaration expected in the library that will be loaded.
-pub struct NodeDeclaration {
+pub struct NodeDeclaration<C> {
     pub rustc_version: &'static str,
     pub core_version: &'static str,
-    pub register: Arc<dyn Factory>,
+    pub constructor: C,
 }
+
+pub type SourceDeclaration = NodeDeclaration<SourceFn>;
+pub type OperatorDeclaration = NodeDeclaration<OperatorFn>;
+pub type SinkDeclaration = NodeDeclaration<SinkFn>;
 
 /// Extensible support for different implementations
 /// This represents the configuration for an extension.
@@ -212,12 +214,12 @@ impl Loader {
     /// - the URI scheme is not known (so far only `file://` is supported)
     /// - the extension is not known
     /// - the node does not match the extension interface
-    unsafe fn load_node(
+    unsafe fn load_node<T: ConstructorFn>(
         &self,
-        factory_symbol: NodeSymbol,
+        node_symbol: NodeSymbol,
         uri: &str,
         configuration: &mut Option<Configuration>,
-    ) -> Result<(Library, Arc<dyn Factory>)> {
+    ) -> Result<(Library, T)> {
         let uri = Url::parse(uri).map_err(|err| zferror!(ErrorKind::ParsingError, err))?;
 
         match uri.scheme() {
@@ -241,7 +243,7 @@ impl Loader {
                                 e.config_lib_key.clone(),
                                 &file_path,
                             )?;
-                            let lib = match factory_symbol {
+                            let lib = match node_symbol {
                                 NodeSymbol::Source => &e.source_lib,
                                 NodeSymbol::Operator => &e.operator_lib,
                                 NodeSymbol::Sink => &e.sink_lib,
@@ -260,15 +262,16 @@ impl Loader {
                 #[cfg(target_family = "windows")]
                 let library = Library::new(library_path)?;
 
-                let export_fn = library.get::<ExportFn>(factory_symbol.to_bytes())?;
-                let decl = (export_fn)();
+                let decl = library
+                    .get::<*mut NodeDeclaration<T>>(node_symbol.to_bytes())?
+                    .read();
 
                 // version checks to prevent accidental ABI incompatibilities
                 if decl.rustc_version != RUSTC_VERSION || decl.core_version != CORE_VERSION {
                     return Err(zferror!(ErrorKind::VersionMismatch).into());
                 }
 
-                Ok((library, decl.register))
+                Ok((library, decl.constructor))
             }
 
             _ => Err(zferror!(ErrorKind::Unimplemented).into()),
@@ -286,14 +289,18 @@ impl Loader {
     /// - the library does not contain the symbols
     /// - the URI is missing
     /// - the URI scheme is not known (so far only `file://` is supported).
-    pub(crate) fn load_source_factory(&self, mut record: SourceRecord) -> Result<SourceFactory> {
+    pub(crate) fn load_source_constructor(
+        &self,
+        mut record: SourceRecord,
+    ) -> Result<SourceConstructor> {
         if let Some(uri) = &record.uri {
-            let (library, factory) =
-                unsafe { self.load_node(NodeSymbol::Source, uri, &mut record.configuration)? };
+            let (library, constructor) = unsafe {
+                self.load_node::<SourceFn>(NodeSymbol::Source, uri, &mut record.configuration)?
+            };
 
-            Ok(SourceFactory::new_dynamic(
+            Ok(SourceConstructor::new_dynamic(
                 record,
-                factory,
+                constructor,
                 Arc::new(library),
             ))
         } else {
@@ -317,17 +324,18 @@ impl Loader {
     /// - the library does not contain the symbols
     /// - the URI is missing
     /// - the URI scheme is not known (so far only `file://` is known).
-    pub(crate) fn load_operator_factory(
+    pub(crate) fn load_operator_constructor(
         &self,
         mut record: OperatorRecord,
-    ) -> Result<OperatorFactory> {
+    ) -> Result<OperatorConstructor> {
         if let Some(uri) = &record.uri {
-            let (library, factory) =
-                unsafe { self.load_node(NodeSymbol::Operator, uri, &mut record.configuration)? };
+            let (library, constructor) = unsafe {
+                self.load_node::<OperatorFn>(NodeSymbol::Operator, uri, &mut record.configuration)?
+            };
 
-            Ok(OperatorFactory::new_dynamic(
+            Ok(OperatorConstructor::new_dynamic(
                 record,
-                factory,
+                constructor,
                 Arc::new(library),
             ))
         } else {
@@ -350,12 +358,17 @@ impl Loader {
     /// - the library does not contain the symbols
     /// - the URI is missing
     /// - the URI scheme is not known (so far only `file://` is known).
-    pub(crate) fn load_sink_factory(&self, mut record: SinkRecord) -> Result<SinkFactory> {
+    pub(crate) fn load_sink_constructor(&self, mut record: SinkRecord) -> Result<SinkConstructor> {
         if let Some(uri) = &record.uri {
-            let (library, factory) =
-                unsafe { self.load_node(NodeSymbol::Sink, uri, &mut record.configuration)? };
+            let (library, constructor) = unsafe {
+                self.load_node::<SinkFn>(NodeSymbol::Sink, uri, &mut record.configuration)?
+            };
 
-            Ok(SinkFactory::new_dynamic(record, factory, Arc::new(library)))
+            Ok(SinkConstructor::new_dynamic(
+                record,
+                constructor,
+                Arc::new(library),
+            ))
         } else {
             bail!(
                 ErrorKind::LoadingError,

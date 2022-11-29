@@ -25,3 +25,177 @@ macro_rules! zf_spin_lock {
         }
     };
 }
+
+/// This macro exports the symbol Zenoh-Flow will look for when dynamically loading the library of a
+/// [`Source`](`Source`) node.
+///
+/// # Example
+///
+/// ```no_run
+/// use async_trait::async_trait;
+/// use zenoh_flow::prelude::*;
+///
+/// pub struct MySource {
+///     output: Output,
+/// }
+///
+/// #[async_trait]
+/// impl Node for MySource {
+///     async fn iteration(&self) -> Result<()> {
+///         todo!()
+///     }
+/// }
+///
+/// #[async_trait]
+/// impl Source for MySource {
+///     async fn new(
+///         context: Context,
+///         configuration: Option<Configuration>,
+///         outputs: Outputs,
+///     ) -> Result<Self> {
+///         todo!()
+///     }
+/// }
+///
+/// export_source!(MySource);
+/// ```
+#[macro_export]
+macro_rules! export_source {
+    ($source:ty) => {
+        #[doc(hidden)]
+        #[no_mangle]
+        pub static _zf_export_source: $crate::runtime::dataflow::loader::NodeDeclaration<
+            $crate::runtime::dataflow::node::SourceFn,
+        > = $crate::runtime::dataflow::loader::NodeDeclaration::<
+            $crate::runtime::dataflow::node::SourceFn,
+        > {
+            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+            constructor: |context: $crate::types::Context,
+                          configuration: Option<$crate::types::Configuration>,
+                          outputs: $crate::types::Outputs| {
+                std::boxed::Box::pin(async {
+                    let node = <$source>::new(context, configuration, outputs).await?;
+                    Ok(std::sync::Arc::new(node) as std::sync::Arc<dyn $crate::traits::Node>)
+                })
+            },
+        };
+    };
+}
+
+/// This macro exports the symbol Zenoh-Flow will look for when dynamically loading the library of
+/// an [`Operator`](`Operator`) node.
+///
+/// # Example
+///
+/// ```no_run
+/// use async_trait::async_trait;
+/// use zenoh_flow::prelude::*;
+///
+/// pub struct MyOperator {
+///     input: Input,
+///     output: Output,
+/// }
+///
+/// #[async_trait]
+/// impl Node for MyOperator {
+///     async fn iteration(&self) -> Result<()> {
+///         todo!()
+///     }
+/// }
+///
+/// #[async_trait]
+/// impl Operator for MyOperator {
+///     async fn new(
+///         context: Context,
+///         configuration: Option<Configuration>,
+///         inputs: Inputs,
+///         outputs: Outputs,
+///     ) -> Result<Self> {
+///         todo!()
+///     }
+/// }
+///
+/// export_operator!(MyOperator);
+/// ```
+#[macro_export]
+macro_rules! export_operator {
+    ($operator:ty) => {
+        #[doc(hidden)]
+        #[no_mangle]
+        pub static _zf_export_operator: $crate::runtime::dataflow::loader::NodeDeclaration<
+            $crate::runtime::dataflow::node::OperatorFn,
+        > = $crate::runtime::dataflow::loader::NodeDeclaration::<
+            $crate::runtime::dataflow::node::OperatorFn,
+        > {
+            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+            constructor: |context: $crate::types::Context,
+                          configuration: Option<$crate::types::Configuration>,
+                          mut inputs: $crate::types::Inputs,
+                          mut outputs: $crate::types::Outputs| {
+                std::boxed::Box::pin(async {
+                    let node = <$operator>::new(context, configuration, inputs, outputs).await?;
+                    Ok(std::sync::Arc::new(node) as std::sync::Arc<dyn $crate::traits::Node>)
+                })
+            },
+        };
+    };
+}
+
+/// This macro exports the symbol Zenoh-Flow will look for when dynamically loading the library of a
+/// [`Sink`](`Sink`) node.
+///
+/// # Example
+///
+/// ```no_run
+/// use async_trait::async_trait;
+/// use zenoh_flow::prelude::*;
+///
+/// pub struct MySink {
+///     input: Input,
+/// }
+///
+/// #[async_trait]
+/// impl Node for MySink {
+///     async fn iteration(&self) -> Result<()> {
+///         todo!()
+///     }
+/// }
+///
+/// #[async_trait]
+/// impl Sink for MySink {
+///     async fn new(
+///         context: Context,
+///         configuration: Option<Configuration>,
+///         inputs: Inputs,
+///     ) -> Result<Self> {
+///         todo!()
+///     }
+/// }
+///
+/// export_sink!(MySink);
+/// ```
+#[macro_export]
+macro_rules! export_sink {
+    ($sink:ty) => {
+        #[doc(hidden)]
+        #[no_mangle]
+        pub static _zf_export_sink: $crate::runtime::dataflow::loader::NodeDeclaration<
+            $crate::runtime::dataflow::node::SinkFn,
+        > = $crate::runtime::dataflow::loader::NodeDeclaration::<
+            $crate::runtime::dataflow::node::SinkFn,
+        > {
+            rustc_version: $crate::runtime::dataflow::loader::RUSTC_VERSION,
+            core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
+            constructor: |context: $crate::types::Context,
+                          configuration: Option<$crate::types::Configuration>,
+                          mut inputs: $crate::types::Inputs| {
+                std::boxed::Box::pin(async {
+                    let node = <$sink>::new(context, configuration, inputs).await?;
+                    Ok(std::sync::Arc::new(node) as std::sync::Arc<dyn $crate::traits::Node>)
+                })
+            },
+        };
+    };
+}
