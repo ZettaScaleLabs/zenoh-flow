@@ -36,7 +36,7 @@ macro_rules! zf_spin_lock {
 /// use zenoh_flow::prelude::*;
 ///
 /// pub struct MySource {
-///     output: Output,
+///     output: Output<T>,
 /// }
 ///
 /// #[async_trait]

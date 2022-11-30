@@ -13,9 +13,8 @@
 //
 
 use crate::model::record::ZFConnectorRecord;
-use crate::prelude::Streams;
 use crate::traits::Node;
-use crate::types::{Input, Inputs, Message, NodeId, Output, Outputs};
+use crate::types::{Inputs, LinkMessage, NodeId, Outputs};
 use crate::zferror;
 use crate::zfresult::ErrorKind;
 use crate::Result as ZFResult;
@@ -30,7 +29,7 @@ use zenoh_util::core::AsyncResolve;
 /// different runtimes.
 pub(crate) struct ZenohSender {
     pub(crate) id: NodeId,
-    pub(crate) input: Input,
+    pub(crate) receivers: Vec<flume::Receiver<LinkMessage>>,
     pub(crate) z_session: Arc<zenoh::Session>,
     pub(crate) key_expr: KeyExpr<'static>,
 }
@@ -51,7 +50,7 @@ impl ZenohSender {
         session: Arc<Session>,
         mut inputs: Inputs,
     ) -> ZFResult<Self> {
-        let input = inputs.take(record.link_id.port_id.clone()).ok_or_else(|| {
+        let receivers = inputs.hmap.remove(&record.link_id.port_id).ok_or_else(|| {
             zferror!(
                 ErrorKind::IOError,
                 "Link < {} > was not created for Connector < {} >.",
@@ -68,7 +67,7 @@ impl ZenohSender {
 
         Ok(Self {
             id: record.id.clone(),
-            input,
+            receivers,
             z_session: session.clone(),
             key_expr,
         })
@@ -87,18 +86,25 @@ impl Node for ZenohSender {
     /// - zenoh put fails
     /// - link recv fails
     async fn iteration(&self) -> ZFResult<()> {
-        if let Ok(message) = self.input.recv_async().await {
-            log::trace!("[ZenohSender: {}] recv_async: OK", self.id);
+        let fut_receivers = self.receivers.iter().map(|link| link.recv_async());
 
-            let serialized = message.serialize_bincode()?;
+        let (res, _, _) = futures::future::select_all(fut_receivers).await;
 
-            self.z_session
-                .put(self.key_expr.clone(), serialized)
-                .congestion_control(CongestionControl::Block)
-                .res()
-                .await
-        } else {
-            Err(zferror!(ErrorKind::Disconnected).into())
+        match res {
+            Ok(message) => {
+                self.z_session
+                    .put(self.key_expr.clone(), message.serialize_bincode()?)
+                    .congestion_control(CongestionControl::Block)
+                    .res()
+                    .await
+            }
+            Err(e) => Err(zferror!(
+                ErrorKind::Disconnected,
+                "[ZenohSender: {}] {:?}",
+                self.id,
+                e
+            )
+            .into()),
         }
     }
 }
@@ -106,7 +112,7 @@ impl Node for ZenohSender {
 /// A `ZenohReceiver` receives the messages from Zenoh when nodes are running on different runtimes.
 pub(crate) struct ZenohReceiver {
     pub(crate) id: NodeId,
-    pub(crate) output: Output,
+    pub(crate) senders: Vec<flume::Sender<LinkMessage>>,
     pub(crate) subscriber: Subscriber<'static, Receiver<Sample>>,
 }
 
@@ -134,8 +140,9 @@ impl ZenohReceiver {
             .await?
             .into_owned();
         let subscriber = session.declare_subscriber(key_expr.clone()).res().await?;
-        let output = outputs
-            .take(record.link_id.port_id.clone())
+        let senders = outputs
+            .hmap
+            .remove(&record.link_id.port_id)
             .ok_or_else(|| {
                 zferror!(
                     ErrorKind::IOError,
@@ -147,7 +154,7 @@ impl ZenohReceiver {
 
         Ok(Self {
             id: record.id.clone(),
-            output,
+            senders,
             subscriber,
         })
     }
@@ -165,14 +172,30 @@ impl Node for ZenohReceiver {
     /// - the deserialization fails
     /// - sending on the flume channels fails
     async fn iteration(&self) -> ZFResult<()> {
-        if let Ok(msg) = self.subscriber.recv_async().await {
-            let de: Message = bincode::deserialize(&msg.value.payload.contiguous())
-                .map_err(|e| zferror!(ErrorKind::DeseralizationError, e))?;
-            self.output.send_to_all_async(de).await?;
-            log::trace!("[ZenohReceiver: {}] send_async: OK", self.id);
-            Ok(())
-        } else {
-            Err(zferror!(ErrorKind::Disconnected).into())
+        match self.subscriber.recv_async().await {
+            Ok(message) => {
+                let de: LinkMessage = bincode::deserialize(&message.value.payload.contiguous())
+                    .map_err(|e| zferror!(ErrorKind::DeseralizationError, e))?;
+
+                let fut_senders = self
+                    .senders
+                    .iter()
+                    .map(|sender| sender.send_async(de.clone()));
+                let res = futures::future::join_all(fut_senders).await;
+
+                res.iter().for_each(|res| {
+                    if let Err(e) = res {
+                        log::error!(
+                            "[ZenohReceiver: {}] Error occured while sending to downstream nodes: {:?}",
+                            self.id, e
+                        );
+                    }
+                });
+
+                Ok(())
+            }
+
+            Err(e) => Err(zferror!(ErrorKind::Disconnected, e).into()),
         }
     }
 }

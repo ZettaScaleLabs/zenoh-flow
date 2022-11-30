@@ -25,7 +25,7 @@ use zenoh_flow::runtime::dataflow::instance::DataFlowInstance;
 use zenoh_flow::runtime::dataflow::loader::{Loader, LoaderConfig};
 use zenoh_flow::runtime::RuntimeContext;
 use zenoh_flow::traits::ZFData;
-use zenoh_flow::types::{Configuration, Context, Inputs, Message, Outputs, Streams};
+use zenoh_flow::types::{Configuration, Context, Inputs, Message, Outputs};
 use zenoh_flow::zenoh_flow_derive::ZFData;
 use zenoh_flow::zfresult::ErrorKind;
 
@@ -60,7 +60,7 @@ static COUNTER: AtomicUsize = AtomicUsize::new(0);
 // SOURCE
 
 struct CountSource {
-    output: Output,
+    output: Output<ZFUsize>,
 }
 
 #[async_trait]
@@ -99,7 +99,7 @@ impl Node for CountSource {
 // SINK
 
 struct GenericSink {
-    input: Input,
+    input: Input<ZFUsize>,
 }
 
 #[async_trait]
@@ -120,13 +120,12 @@ impl Sink for GenericSink {
 impl Node for GenericSink {
     async fn iteration(&self) -> Result<()> {
         println!("[GenericSink] iteration being");
-        if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
-            let data = msg.try_get::<ZFUsize>()?;
-            println!("[GenericSink] Data from first input {:?}", data);
-            assert_eq!(data.0, COUNTER.load(Ordering::Relaxed));
+        let (message, _timestamp) = self.input.recv_async().await?;
+        match message {
+            Message::Data(zfusize) => println!("[GenericSink] Received: {:?}", zfusize),
+            Message::Watermark => println!("[GenericSink] Received watermark"),
         }
 
-        println!("[GenericSink] iteration done");
         Ok(())
     }
 }
@@ -134,8 +133,8 @@ impl Node for GenericSink {
 // OPERATORS
 
 struct NoOp {
-    input: Input,
-    output: Output,
+    input: Input<ZFUsize>,
+    output: Output<ZFUsize>,
 }
 
 #[async_trait]
@@ -158,13 +157,17 @@ impl Operator for NoOp {
 impl Node for NoOp {
     async fn iteration(&self) -> Result<()> {
         println!("[NoOp] iteration being");
-        if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
-            let data = msg.try_get::<ZFUsize>()?;
-            println!("[NoOp] got data {:?}", data);
-            assert_eq!(data.0, COUNTER.load(Ordering::Relaxed));
-            self.output.send_async(data.clone(), None).await?;
-            println!("[NoOp] sent data");
+        let (message, _timestamp) = self.input.recv_async().await?;
+        match message {
+            Message::Data(number) => {
+                println!("[NoOp] got data {:?}", number);
+                assert_eq!(number.0, COUNTER.load(Ordering::Relaxed));
+                self.output.send_async(number.clone(), None).await?;
+                println!("[NoOp] sent data");
+            }
+            Message::Watermark => println!("[NoOp] Received watermark"),
         }
+
         println!("[NoOp] iteration done");
         Ok(())
     }

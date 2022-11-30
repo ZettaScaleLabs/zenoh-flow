@@ -91,38 +91,15 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 /// A struct implementing the Source trait typically needs to keep a reference to the `Output` it
 /// needs.
 ///
-/// # Example
+/// ## Example
 ///
 /// ```no_run
 /// use zenoh_flow::prelude::*;
-/// use zenoh_flow::zenoh_flow_derive::ZFData;
-/// use std::convert::TryInto;
-///
-/// #[derive(Debug, Clone, ZFData)]
-/// pub struct ZFUsize(pub usize);
-///
-/// impl ZFData for ZFUsize {
-///     fn try_serialize(&self) -> Result<Vec<u8>> {
-///         Ok(self.0.to_ne_bytes().to_vec())
-///     }
-///
-///     fn try_deserialize(bytes: &[u8]) -> Result<Self>
-///     where
-///         Self: Sized,
-///     {
-///         let value = usize::from_ne_bytes(
-///             bytes
-///                 .try_into()
-///                 .map_err(|e| zferror!(ErrorKind::DeseralizationError, "{}", e))?,
-///         );
-///         Ok(ZFUsize(value))
-///     }
-/// }
 ///
 /// pub struct MySource {
-///     output: Output,    // A Source would have one or more outputs.
+///     output: Output<T>,
 ///     // The state could go in such structure.
-///     // state: Arc<Mutex<T>>,
+///     // state: Arc<Mutex<State>>,
 /// }
 ///
 /// #[async_trait::async_trait]
@@ -148,7 +125,7 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///         // interacting with I/O devices. We mimick an asynchronous iteraction with a sleep.
 ///         async_std::task::sleep(std::time::Duration::from_secs(1)).await;
 ///
-///         self.output.send_async(ZFUsize(1), None).await?;
+///         // self.output.send_async(T, None).await?;
 ///         Ok(())
 ///     }
 /// }
@@ -186,14 +163,14 @@ pub trait Source: Node + Send + Sync {
 /// A struct implementing the Sink trait typically needs to keep a reference to the `Input` it
 /// needs.
 ///
-/// # Example
+/// ## Example
 ///
 /// ```no_run
 /// use async_trait::async_trait;
 /// use zenoh_flow::prelude::*;
 ///
 /// struct GenericSink {
-///     input: Input,
+///     input: Input<T>,
 /// }
 ///
 /// #[async_trait]
@@ -212,8 +189,10 @@ pub trait Source: Node + Send + Sync {
 /// #[async_trait]
 /// impl Node for GenericSink {
 ///     async fn iteration(&self) -> Result<()> {
-///         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
-///             println!("Data {:?}", msg);
+///         let (message, _timestamp) = self.input.recv_async().await?;
+///         match message {
+///             Message::Data(t) => println!("{:?}", t),
+///             Message::Watermark => println!("Watermark"),
 ///         }
 ///
 ///         Ok(())
@@ -260,8 +239,8 @@ pub trait Sink: Node + Send + Sync {
 /// use zenoh_flow::prelude::*;
 ///
 /// struct NoOp {
-///     input: Input,
-///     output: Output,
+///     input: Input<T>,
+///     output: Output<U>,
 /// }
 ///
 /// #[async_trait]
@@ -281,8 +260,11 @@ pub trait Sink: Node + Send + Sync {
 /// #[async_trait]
 /// impl Node for NoOp {
 ///     async fn iteration(&self) -> Result<()> {
-///         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
-///             self.output.send_async((*msg).clone(), None).await?;
+///         let (message, _timestamp) = self.input.recv_async().await?;
+///         match message {
+///             // @J-Loudet Convert the usize to a string
+///             Message::Data(t) => self.output.send_async(*t.to_string()).await?,
+///             Message::Watermark => println!("Watermark"),
 ///         }
 ///         Ok(())
 ///     }

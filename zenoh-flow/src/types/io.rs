@@ -12,60 +12,102 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::types::{Data, Message, PortId};
+use super::{Data, DataMessage, Message};
+use crate::prelude::ZFData;
+use crate::types::{LinkMessage, Payload, PortId};
 use crate::zferror;
 use crate::zfresult::ErrorKind;
 use crate::Result as ZFResult;
 use flume::TryRecvError;
+use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::ops::Deref;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::{
-    collections::HashMap,
-    sync::atomic::{AtomicU64, Ordering},
-};
 use uhlc::{Timestamp, HLC};
 
-pub type Inputs = HashMap<PortId, Input>;
-pub type Outputs = HashMap<PortId, Output>;
-
-pub trait Streams {
-    type Item;
-
-    fn take(&mut self, port_id: impl AsRef<str>) -> Option<Self::Item>;
-
-    fn take_into_arc(&mut self, port_id: impl AsRef<str>) -> Option<Arc<Self::Item>>;
+pub struct Inputs {
+    pub(crate) hmap: HashMap<PortId, Vec<flume::Receiver<LinkMessage>>>,
 }
 
-impl Streams for Inputs {
-    type Item = Input;
+impl Deref for Inputs {
+    type Target = HashMap<PortId, Vec<flume::Receiver<LinkMessage>>>;
 
-    fn take(&mut self, port_id: impl AsRef<str>) -> Option<Self::Item> {
-        self.remove(port_id.as_ref())
-    }
-
-    fn take_into_arc(&mut self, port_id: impl AsRef<str>) -> Option<Arc<Self::Item>> {
-        self.remove(port_id.as_ref()).map(Arc::new)
+    fn deref(&self) -> &Self::Target {
+        &self.hmap
     }
 }
 
-impl Streams for Outputs {
-    type Item = Output;
-
-    fn take(&mut self, port_id: impl AsRef<str>) -> Option<Self::Item> {
-        self.remove(port_id.as_ref())
+impl Inputs {
+    pub fn take<T: ZFData>(&mut self, port_id: impl AsRef<str>) -> Option<Input<T>> {
+        self.hmap.remove(port_id.as_ref()).map(|receivers| Input {
+            _phantom: PhantomData,
+            port_id: port_id.as_ref().into(),
+            receivers,
+        })
     }
 
-    fn take_into_arc(&mut self, port_id: impl AsRef<str>) -> Option<Arc<Self::Item>> {
-        self.remove(port_id.as_ref()).map(Arc::new)
+    pub(crate) fn new() -> Self {
+        Self {
+            hmap: HashMap::default(),
+        }
+    }
+
+    pub(crate) fn insert(&mut self, port_id: PortId, rx: flume::Receiver<LinkMessage>) {
+        self.hmap
+            .entry(port_id)
+            .or_insert_with(Vec::default)
+            .push(rx)
+    }
+}
+
+pub struct Outputs {
+    pub(crate) hmap: HashMap<PortId, Vec<flume::Sender<LinkMessage>>>,
+    pub(crate) hlc: Arc<HLC>,
+}
+
+impl Deref for Outputs {
+    type Target = HashMap<PortId, Vec<flume::Sender<LinkMessage>>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.hmap
+    }
+}
+
+impl Outputs {
+    pub fn take<T: ZFData>(&mut self, port_id: impl AsRef<str>) -> Option<Output<T>> {
+        self.hmap.remove(port_id.as_ref()).map(|senders| Output {
+            _phantom: PhantomData,
+            port_id: port_id.as_ref().into(),
+            hlc: Arc::clone(&self.hlc),
+            senders,
+            last_watermark: Arc::new(AtomicU64::new(self.hlc.new_timestamp().get_time().as_u64())),
+        })
+    }
+
+    pub(crate) fn new(hlc: Arc<HLC>) -> Self {
+        Self {
+            hmap: HashMap::default(),
+            hlc,
+        }
+    }
+
+    pub(crate) fn insert(&mut self, port_id: PortId, tx: flume::Sender<LinkMessage>) {
+        self.hmap
+            .entry(port_id)
+            .or_insert_with(Vec::default)
+            .push(tx)
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct Input {
+pub struct Input<T: ZFData + 'static> {
+    _phantom: PhantomData<T>,
     pub(crate) port_id: PortId,
-    pub(crate) receivers: Vec<flume::Receiver<Message>>,
+    pub(crate) receivers: Vec<flume::Receiver<LinkMessage>>,
 }
 
-impl Input {
+impl<T: ZFData + 'static> Input<T> {
     pub fn port_id(&self) -> &PortId {
         &self.port_id
     }
@@ -82,16 +124,20 @@ impl Input {
     ///
     /// ## Error
     ///
-    /// If an error occurs on one of the channel, this error is returned.
-    pub async fn recv_async(&self) -> ZFResult<Message> {
+    /// If an error occurs on one of the channels, this error is returned.
+    pub async fn recv_async(&self) -> ZFResult<(Message<T>, Timestamp)> {
         let iter = self.receivers.iter().map(|link| link.recv_async());
 
-        // FIXME The remaining futures are not cancelled. Wouldn’t a `race` be better in that
+        // FIXME The remaining futures are not cancelled. Wouldn't a `race` be better in that
         // situation? Or maybe we can store the other futures in the struct and poll them once
         // `recv` is called again?
         let (res, _, _) = futures::future::select_all(iter).await;
-
-        res.map_err(|e| zferror!(ErrorKind::RecvError, e).into())
+        Ok(match res? {
+            LinkMessage::Data(DataMessage { data, timestamp }) => {
+                (Message::Data(Data::try_new(data)?), timestamp)
+            }
+            LinkMessage::Watermark(timestamp) => (Message::Watermark, timestamp),
+        })
     }
 
     /// Returns the first `Message` that was received on any of the channels associated with this
@@ -103,8 +149,8 @@ impl Input {
     /// ## Error
     ///
     /// If an error occurs on one of the channel, this error is returned.
-    pub fn recv(&self) -> ZFResult<Message> {
-        let mut msg: Option<ZFResult<Message>> = None;
+    pub fn recv(&self) -> ZFResult<LinkMessage> {
+        let mut msg: Option<ZFResult<LinkMessage>> = None;
 
         while msg.is_none() {
             for receiver in &self.receivers {
@@ -126,28 +172,18 @@ impl Input {
         msg.ok_or_else(|| zferror!(ErrorKind::Empty))?
             .map_err(|e| zferror!(ErrorKind::RecvError, "{:?}", e).into())
     }
-
-    pub(crate) fn new(id: PortId) -> Self {
-        Self {
-            port_id: id,
-            receivers: vec![],
-        }
-    }
-
-    pub(crate) fn add(&mut self, receiver: flume::Receiver<Message>) {
-        self.receivers.push(receiver);
-    }
 }
 
 #[derive(Clone)]
-pub struct Output {
+pub struct Output<T: ZFData + 'static> {
+    _phantom: PhantomData<T>,
     pub(crate) port_id: PortId,
-    pub(crate) senders: Vec<flume::Sender<Message>>,
+    pub(crate) senders: Vec<flume::Sender<LinkMessage>>,
     pub(crate) hlc: Arc<HLC>,
     pub(crate) last_watermark: Arc<AtomicU64>,
 }
 
-impl Output {
+impl<T: ZFData + 'static> Output<T> {
     /// Returns the port id associated with this Output.
     ///
     /// Port ids are unique per type (i.e. Input / Output) and per node.
@@ -158,24 +194,6 @@ impl Output {
     /// Returns the number of channels associated with this Output.
     pub fn channels_count(&self) -> usize {
         self.senders.len()
-    }
-
-    /// Creates a new Output, providing its id and a reference to the HLC.
-    ///
-    /// The reference to the HLC is used (and required) to generate timestamps and watermarks.
-    pub(crate) fn new(id: PortId, hlc: Arc<HLC>) -> Self {
-        let now = hlc.new_timestamp();
-        Self {
-            port_id: id,
-            senders: vec![],
-            hlc,
-            last_watermark: Arc::new(AtomicU64::new(now.get_time().as_u64())),
-        }
-    }
-
-    /// Add a Sender to this Output.
-    pub(crate) fn add(&mut self, tx: flume::Sender<Message>) {
-        self.senders.push(tx);
     }
 
     /// If a timestamp is provided, check that it is not inferior to the latest watermark.
@@ -194,7 +212,7 @@ impl Output {
         Ok(ts)
     }
 
-    pub(crate) fn send_to_all(&self, message: Message) -> ZFResult<()> {
+    pub(crate) fn send_to_all(&self, message: LinkMessage) -> ZFResult<()> {
         // FIXME Feels like a cheap hack counting the number of errors. To improve.
         let mut err = 0usize;
         for sender in &self.senders {
@@ -217,17 +235,27 @@ impl Output {
         Ok(())
     }
 
-    pub(crate) async fn send_to_all_async(&self, message: Message) -> ZFResult<()> {
+    pub(crate) async fn send_to_all_async(&self, message: LinkMessage) -> ZFResult<()> {
         // FIXME Feels like a cheap hack counting the number of errors. To improve.
-        let mut err = 0usize;
-        for sender in &self.senders {
-            if let Err(e) = sender.send_async(message.clone()).await {
-                log::error!("[Output: {}] {:?}", self.port_id, e);
-                err += 1;
-            }
-        }
+        let mut err = false;
+        let fut_senders = self
+            .senders
+            .iter()
+            .map(|sender| sender.send_async(message.clone()));
+        let res = futures::future::join_all(fut_senders).await;
 
-        if err > 0 {
+        res.iter().for_each(|res| {
+            if let Err(e) = res {
+                log::error!(
+                    "[Output: {}] Error occured while sending to downstream node(s): {:?}",
+                    self.port_id(),
+                    e
+                );
+                err = true;
+            }
+        });
+
+        if err {
             return Err(zferror!(
                 ErrorKind::SendError,
                 "[Output: {}] Encountered {} errors while async sending (or trying to)",
@@ -247,9 +275,9 @@ impl Output {
     /// If an error occurs while sending the message on a channel, we still try to send it on the
     /// remaining channels. For each failing channel, an error is logged and counted for. The total
     /// number of encountered errors is returned.
-    pub fn send(&self, data: impl Into<Data>, timestamp: Option<u64>) -> ZFResult<()> {
+    pub fn send(&self, data: impl Into<Payload>, timestamp: Option<u64>) -> ZFResult<()> {
         let ts = self.check_timestamp(timestamp)?;
-        let message = Message::from_serdedata(data.into(), ts);
+        let message = LinkMessage::from_serdedata(data.into(), ts);
         self.send_to_all(message)
     }
 
@@ -260,9 +288,9 @@ impl Output {
     /// If an error occurs while sending the message on a channel, we still try to send it on the
     /// remaining channels. For each failing channel, an error is logged and counted for. The total
     /// number of encountered errors is returned.
-    pub async fn send_async(&self, data: impl Into<Data>, timestamp: Option<u64>) -> ZFResult<()> {
+    pub async fn send_async(&self, data: T, timestamp: Option<u64>) -> ZFResult<()> {
         let ts = self.check_timestamp(timestamp)?;
-        let message = Message::from_serdedata(data.into(), ts);
+        let message = LinkMessage::from_serdedata(data.into(), ts);
         self.send_to_all_async(message).await
     }
 
@@ -277,7 +305,7 @@ impl Output {
         let ts = self.check_timestamp(timestamp)?;
         self.last_watermark
             .store(ts.get_time().0, Ordering::Relaxed);
-        let message = Message::Watermark(ts);
+        let message = LinkMessage::Watermark(ts);
         self.send_to_all(message)
     }
 
@@ -292,7 +320,7 @@ impl Output {
         let ts = self.check_timestamp(timestamp)?;
         self.last_watermark
             .store(ts.get_time().0, Ordering::Relaxed);
-        let message = Message::Watermark(ts);
+        let message = LinkMessage::Watermark(ts);
         self.send_to_all_async(message).await
     }
 }

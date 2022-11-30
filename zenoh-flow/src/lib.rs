@@ -54,8 +54,8 @@ pub mod prelude {
 
     pub use crate::traits::{DowncastAny, Node, Operator, Sink, Source, ZFData};
     pub use crate::types::{
-        Configuration, Context, Data, DataMessage, Input, Inputs, Message, NodeId, Output, Outputs,
-        PortId, RuntimeId, Streams,
+        Configuration, Context, Input, Inputs, Message, NodeId, Output, Outputs, Payload, PortId,
+        RuntimeId,
     };
     pub use crate::zferror;
     pub use crate::{export_operator, export_sink, export_source};
