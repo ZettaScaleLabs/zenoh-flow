@@ -61,7 +61,7 @@ pub trait DowncastAny {
 ///         Self: Sized,
 ///     {
 ///         Ok(MyString(
-///             String::from_utf8(bytes.to_vec()).map_err(|e| zferror!(ErrorKind::DeseralizationError, e))?,
+///             String::from_utf8(bytes.to_vec()).map_err(|e| zferror!(ErrorKind::DeserializationError, e))?,
 ///         ))
 ///     }
 /// }
@@ -97,7 +97,7 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 /// use zenoh_flow::prelude::*;
 ///
 /// pub struct MySource {
-///     output: Output<T>,
+///     output: Output<usize>,
 ///     // The state could go in such structure.
 ///     // state: Arc<Mutex<State>>,
 /// }
@@ -125,7 +125,7 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///         // interacting with I/O devices. We mimick an asynchronous iteraction with a sleep.
 ///         async_std::task::sleep(std::time::Duration::from_secs(1)).await;
 ///
-///         // self.output.send_async(T, None).await?;
+///         // self.output.send_async(10usize, None).await?;
 ///         Ok(())
 ///     }
 /// }
@@ -170,7 +170,7 @@ pub trait Source: Node + Send + Sync {
 /// use zenoh_flow::prelude::*;
 ///
 /// struct GenericSink {
-///     input: Input<T>,
+///     input: Input<usize>,
 /// }
 ///
 /// #[async_trait]
@@ -191,7 +191,7 @@ pub trait Source: Node + Send + Sync {
 ///     async fn iteration(&self) -> Result<()> {
 ///         let (message, _timestamp) = self.input.recv_async().await?;
 ///         match message {
-///             Message::Data(t) => println!("{:?}", t),
+///             Message::Data(t) => println!("{}", *t),
 ///             Message::Watermark => println!("Watermark"),
 ///         }
 ///
@@ -239,8 +239,8 @@ pub trait Sink: Node + Send + Sync {
 /// use zenoh_flow::prelude::*;
 ///
 /// struct NoOp {
-///     input: Input<T>,
-///     output: Output<U>,
+///     input: Input<usize>,
+///     output: Output<usize>,
 /// }
 ///
 /// #[async_trait]
@@ -262,8 +262,7 @@ pub trait Sink: Node + Send + Sync {
 ///     async fn iteration(&self) -> Result<()> {
 ///         let (message, _timestamp) = self.input.recv_async().await?;
 ///         match message {
-///             // @J-Loudet Convert the usize to a string
-///             Message::Data(t) => self.output.send_async(*t.to_string()).await?,
+///             Message::Data(t) => self.output.send_async(*t, None).await?,
 ///             Message::Watermark => println!("Watermark"),
 ///         }
 ///         Ok(())

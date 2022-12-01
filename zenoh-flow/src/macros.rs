@@ -36,7 +36,7 @@ macro_rules! zf_spin_lock {
 /// use zenoh_flow::prelude::*;
 ///
 /// pub struct MySource {
-///     output: Output<T>,
+///     output: Output<usize>,
 /// }
 ///
 /// #[async_trait]
@@ -93,8 +93,8 @@ macro_rules! export_source {
 /// use zenoh_flow::prelude::*;
 ///
 /// pub struct MyOperator {
-///     input: Input,
-///     output: Output,
+///     input: Input<usize>,
+///     output: Output<String>,
 /// }
 ///
 /// #[async_trait]
@@ -153,7 +153,7 @@ macro_rules! export_operator {
 /// use zenoh_flow::prelude::*;
 ///
 /// pub struct MySink {
-///     input: Input,
+///     input: Input<String>,
 /// }
 ///
 /// #[async_trait]

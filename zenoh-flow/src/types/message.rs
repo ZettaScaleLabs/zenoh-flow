@@ -89,7 +89,7 @@ impl Payload {
             Self::Bytes(bytes) => {
                 let data: Arc<dyn ZFData> = Arc::new(
                     Typed::try_deserialize(bytes.as_slice())
-                        .map_err(|e| zferror!(ErrorKind::DeseralizationError, "{:?}", e))?,
+                        .map_err(|e| zferror!(ErrorKind::DeserializationError, "{:?}", e))?,
                 );
                 Ok(Self::Typed(data.clone()))
             }
@@ -417,7 +417,10 @@ impl<T: ZFData + 'static> Data<T> {
             Payload::Bytes(ref bytes) => typed = Some(T::try_deserialize(bytes)?),
             Payload::Typed(ref typed) => {
                 if !(*typed).as_any().is::<T>() {
-                    bail!(ErrorKind::DeseralizationError, "Could not downcast payload")
+                    bail!(
+                        ErrorKind::DeserializationError,
+                        "Could not downcast payload"
+                    )
                 }
             }
         }

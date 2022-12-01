@@ -175,7 +175,7 @@ impl Node for ZenohReceiver {
         match self.subscriber.recv_async().await {
             Ok(message) => {
                 let de: LinkMessage = bincode::deserialize(&message.value.payload.contiguous())
-                    .map_err(|e| zferror!(ErrorKind::DeseralizationError, e))?;
+                    .map_err(|e| zferror!(ErrorKind::DeserializationError, e))?;
 
                 let fut_senders = self
                     .senders

@@ -13,7 +13,6 @@
 //
 
 use async_trait::async_trait;
-use std::convert::TryInto;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,33 +23,7 @@ use zenoh_flow::prelude::*;
 use zenoh_flow::runtime::dataflow::instance::DataFlowInstance;
 use zenoh_flow::runtime::dataflow::loader::{Loader, LoaderConfig};
 use zenoh_flow::runtime::RuntimeContext;
-use zenoh_flow::traits::ZFData;
 use zenoh_flow::types::{Configuration, Context, Inputs, Message, Outputs};
-use zenoh_flow::zenoh_flow_derive::ZFData;
-use zenoh_flow::zfresult::ErrorKind;
-
-// Data Type
-
-#[derive(Debug, Clone, ZFData)]
-pub struct ZFUsize(pub usize);
-
-impl ZFData for ZFUsize {
-    fn try_serialize(&self) -> Result<Vec<u8>> {
-        Ok(self.0.to_ne_bytes().to_vec())
-    }
-
-    fn try_deserialize(bytes: &[u8]) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        let value = usize::from_ne_bytes(
-            bytes
-                .try_into()
-                .map_err(|e| zferror!(ErrorKind::DeseralizationError, "{}", e))?,
-        );
-        Ok(ZFUsize(value))
-    }
-}
 
 static SOURCE: &str = "Counter";
 static DESTINATION: &str = "Counter";
@@ -60,7 +33,7 @@ static COUNTER: AtomicUsize = AtomicUsize::new(0);
 // SOURCE
 
 struct CountSource {
-    output: Output<ZFUsize>,
+    output: Output<usize>,
 }
 
 #[async_trait]
@@ -86,7 +59,7 @@ impl Node for CountSource {
 
         println!("[CountSource] sending on first output");
         self.output
-            .send_async(ZFUsize(COUNTER.load(Ordering::Relaxed)), None)
+            .send_async(COUNTER.load(Ordering::Relaxed), None)
             .await?;
 
         println!("[CountSource] iteration done, sleeping");
@@ -99,7 +72,7 @@ impl Node for CountSource {
 // SINK
 
 struct GenericSink {
-    input: Input<ZFUsize>,
+    input: Input<usize>,
 }
 
 #[async_trait]
@@ -133,8 +106,8 @@ impl Node for GenericSink {
 // OPERATORS
 
 struct NoOp {
-    input: Input<ZFUsize>,
-    output: Output<ZFUsize>,
+    input: Input<usize>,
+    output: Output<usize>,
 }
 
 #[async_trait]
@@ -161,8 +134,8 @@ impl Node for NoOp {
         match message {
             Message::Data(number) => {
                 println!("[NoOp] got data {:?}", number);
-                assert_eq!(number.0, COUNTER.load(Ordering::Relaxed));
-                self.output.send_async(number.clone(), None).await?;
+                assert_eq!(*number, COUNTER.load(Ordering::Relaxed));
+                self.output.send_async(*number, None).await?;
                 println!("[NoOp] sent data");
             }
             Message::Watermark => println!("[NoOp] Received watermark"),
