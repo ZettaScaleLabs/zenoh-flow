@@ -14,7 +14,6 @@
 
 use async_trait::async_trait;
 use flume::{bounded, Receiver};
-use std::convert::TryInto;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use zenoh::prelude::r#async::*;
@@ -24,33 +23,8 @@ use zenoh_flow::prelude::*;
 use zenoh_flow::runtime::dataflow::instance::DataFlowInstance;
 use zenoh_flow::runtime::dataflow::loader::{Loader, LoaderConfig};
 use zenoh_flow::runtime::RuntimeContext;
-use zenoh_flow::traits::{
-    Node, OperatorFactoryTrait, SinkFactoryTrait, SourceFactoryTrait, ZFData,
-};
+use zenoh_flow::traits::{Node, OperatorFactoryTrait, SinkFactoryTrait, SourceFactoryTrait};
 use zenoh_flow::types::{Configuration, Context, Inputs, Message, Outputs, Streams};
-use zenoh_flow::zenoh_flow_derive::ZFData;
-// Data Type
-
-#[derive(Debug, Clone, ZFData)]
-pub struct ZFUsize(pub usize);
-
-impl ZFData for ZFUsize {
-    fn try_serialize(&self) -> Result<Vec<u8>> {
-        Ok(self.0.to_ne_bytes().to_vec())
-    }
-
-    fn try_deserialize(bytes: &[u8]) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        let value = usize::from_ne_bytes(
-            bytes
-                .try_into()
-                .map_err(|e| zferror!(ErrorKind::DeserializationError, "{}", e))?,
-        );
-        Ok(ZFUsize(value))
-    }
-}
 
 static SOURCE: &str = "Counter";
 static DESTINATION: &str = "Counter";
@@ -73,12 +47,12 @@ impl Node for CountSource {
         self.rx.recv_async().await.unwrap();
         COUNTER.fetch_add(1, Ordering::AcqRel);
         self.output
-            .send_async(ZFUsize(COUNTER.load(Ordering::Relaxed)), None)
+            .send_async(COUNTER.load(Ordering::Relaxed), None)
             .await?;
 
         COUNTER_CALLBACK.fetch_add(1, Ordering::AcqRel);
         self.output_callback
-            .send_async(ZFUsize(COUNTER_CALLBACK.load(Ordering::Relaxed)), None)
+            .send_async(COUNTER_CALLBACK.load(Ordering::Relaxed), None)
             .await
     }
 }
@@ -117,13 +91,13 @@ struct GenericSink {
 impl Node for GenericSink {
     async fn iteration(&self) -> Result<()> {
         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
-            let data = msg.try_get::<ZFUsize>()?;
-            assert_eq!(data.0, COUNTER.load(Ordering::Relaxed));
+            let data = msg.try_get::<usize>()?;
+            assert_eq!(*data, COUNTER.load(Ordering::Relaxed));
         }
 
         if let Ok(Message::Data(mut msg)) = self.input_callback.recv_async().await {
-            let data = msg.try_get::<ZFUsize>()?;
-            assert_eq!(data.0, COUNTER_CALLBACK.load(Ordering::Relaxed));
+            let data = msg.try_get::<usize>()?;
+            assert_eq!(*data, COUNTER_CALLBACK.load(Ordering::Relaxed));
         }
 
         Ok(())
@@ -160,8 +134,9 @@ struct NoOp {
 impl Node for NoOp {
     async fn iteration(&self) -> Result<()> {
         if let Ok(Message::Data(mut msg)) = self.input.recv_async().await {
-            let data = msg.try_get::<ZFUsize>()?;
-            assert_eq!(data.0, COUNTER.load(Ordering::Relaxed));
+            let data = msg.try_get::<usize>()?;
+            assert_eq!(*data, COUNTER.load(Ordering::Relaxed));
+            #[allow(clippy::clone_on_copy)]
             self.output.send_async(data.clone(), None).await?;
         }
         Ok(())
@@ -208,11 +183,12 @@ impl OperatorFactoryTrait for NoOpCallbackFactory {
                 async move {
                     println!("Entering callback");
                     let data = match message {
-                        Message::Data(mut data) => data.try_get::<ZFUsize>()?.clone(),
+                        #[allow(clippy::clone_on_copy)]
+                        Message::Data(mut data) => data.try_get::<usize>()?.clone(),
                         _ => return Err(zferror!(ErrorKind::Unsupported).into()),
                     };
 
-                    assert_eq!(data.0, COUNTER_CALLBACK.load(Ordering::Relaxed));
+                    assert_eq!(data, COUNTER_CALLBACK.load(Ordering::Relaxed));
                     output_cloned.send_async(data, None).await?;
                     Ok(())
                 }
