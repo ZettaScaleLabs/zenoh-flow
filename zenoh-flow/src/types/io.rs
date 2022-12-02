@@ -288,9 +288,13 @@ impl<T: ZFData + 'static> Output<T> {
     /// If an error occurs while sending the message on a channel, we still try to send it on the
     /// remaining channels. For each failing channel, an error is logged and counted for. The total
     /// number of encountered errors is returned.
-    pub async fn send_async(&self, data: T, timestamp: Option<u64>) -> ZFResult<()> {
+    pub async fn send_async(
+        &self,
+        data: impl Into<Data<T>>,
+        timestamp: Option<u64>,
+    ) -> ZFResult<()> {
         let ts = self.check_timestamp(timestamp)?;
-        let message = LinkMessage::from_serdedata(data.into(), ts);
+        let message = LinkMessage::from_serdedata(data.into().into(), ts);
         self.send_to_all_async(message).await
     }
 

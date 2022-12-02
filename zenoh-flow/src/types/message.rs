@@ -151,6 +151,12 @@ impl From<&[u8]> for Payload {
     }
 }
 
+impl<T: ZFData + 'static> From<Data<T>> for Payload {
+    fn from(data: Data<T>) -> Self {
+        data.payload
+    }
+}
+
 /// Zenoh-Flow data messages
 ///
 /// It contains the actual data, the timestamp associated,
@@ -342,12 +348,12 @@ pub enum Message<T: ZFData> {
 /// Upon reception, it transparently deserializes to `T` when the message is received serialized. It
 /// downcasts it to a `&T` when the data is passed "typed" through a channel.
 ///
-/// # Performance
+/// ## Performance
 ///
 /// When deserializing, an allocation is performed.
 #[derive(Debug)]
 pub struct Data<T: ZFData> {
-    data: Payload,
+    payload: Payload,
     bytes: Option<Vec<u8>>,
     // CAVEAT: Setting the value **typed** to `None` when it was already set to `Some` can cause a
     // panic! The visibility of the entire structure is private to force us not to make such
@@ -364,7 +370,7 @@ impl<T: ZFData + 'static> Deref for Data<T> {
     fn deref(&self) -> &Self::Target {
         if let Some(ref typed) = self.typed {
             typed
-        } else if let Payload::Typed(ref typed) = self.data {
+        } else if let Payload::Typed(ref typed) = self.payload {
             typed.as_any().downcast_ref::<T>().expect(
                 r#"You probably managed to find a very nasty flaw in Zenoh-Flow’s code as we
 believed this situation would never happen (unless explicitely triggered — "explicitely" being an
@@ -410,10 +416,10 @@ impl<T: ZFData + 'static> Data<T> {
     ///
     /// An error will be returned if the Payload does not match `T`, i.e. if the deserialization or
     /// the downcast failed — depending on the how the data was received.
-    pub(crate) fn try_new(data: Payload) -> Result<Self> {
+    pub(crate) fn try_new(payload: Payload) -> Result<Self> {
         let mut typed = None;
 
-        match data {
+        match payload {
             Payload::Bytes(ref bytes) => typed = Some(T::try_deserialize(bytes)?),
             Payload::Typed(ref typed) => {
                 if !(*typed).as_any().is::<T>() {
@@ -426,7 +432,7 @@ impl<T: ZFData + 'static> Data<T> {
         }
 
         Ok(Self {
-            data,
+            payload,
             bytes: None,
             typed,
         })
@@ -441,7 +447,7 @@ impl<T: ZFData + 'static> Data<T> {
     ///
     /// This method can return an error if the serialization failed.
     pub fn try_as_bytes(&mut self) -> Result<&[u8]> {
-        match &self.data {
+        match &self.payload {
             Payload::Bytes(bytes) => Ok(bytes.as_slice()),
             Payload::Typed(typed) => {
                 if self.bytes.is_none() {
@@ -452,6 +458,17 @@ impl<T: ZFData + 'static> Data<T> {
                     .as_ref()
                     .expect("This cannot fail as we serialized above"))
             }
+        }
+    }
+}
+
+impl<T: ZFData + 'static> From<T> for Data<T> {
+    fn from(data: T) -> Self {
+        let payload = Payload::Typed(Arc::new(data));
+        Self {
+            payload,
+            bytes: None,
+            typed: None,
         }
     }
 }
