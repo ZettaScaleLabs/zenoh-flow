@@ -39,7 +39,6 @@ use const_format::formatcp;
 
 pub use ::zenoh_flow_derive;
 
-pub mod macros;
 pub mod model;
 pub mod runtime;
 pub mod traits;
@@ -58,11 +57,10 @@ pub mod prelude {
         PortId, RuntimeId, Streams,
     };
     pub use crate::zferror;
-    pub use crate::{export_operator, export_sink, export_source};
 
     pub use crate::zfresult::{Error, ErrorKind, ZFResult as Result};
 
-    pub use crate::zenoh_flow_derive::ZFData;
+    pub use crate::zenoh_flow_derive::{export_operator, export_sink, export_source, ZFData};
 }
 
 /// Commit id of latest commit on Zenoh Flow

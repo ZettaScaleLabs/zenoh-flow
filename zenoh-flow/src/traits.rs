@@ -118,7 +118,9 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///         Ok(ZFUsize(value))
 ///     }
 /// }
-///
+/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
+/// // the shared library.
+/// #[export_source]
 /// pub struct MySource {
 ///     output: Output,    // A Source would have one or more outputs.
 ///     // The state could go in such structure.
@@ -153,9 +155,6 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///     }
 /// }
 ///
-/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
-/// // the shared library.
-/// export_source!(MySource);
 /// ```
 #[async_trait]
 pub trait Source: Node + Send + Sync {
@@ -192,6 +191,9 @@ pub trait Source: Node + Send + Sync {
 /// use async_trait::async_trait;
 /// use zenoh_flow::prelude::*;
 ///
+/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
+/// // the shared library.
+/// #[export_sink]
 /// struct GenericSink {
 ///     input: Input,
 /// }
@@ -220,9 +222,6 @@ pub trait Source: Node + Send + Sync {
 ///     }
 /// }
 ///
-/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
-/// // the shared library.
-/// export_sink!(GenericSink);
 /// ```
 #[async_trait]
 pub trait Sink: Node + Send + Sync {
@@ -259,6 +258,9 @@ pub trait Sink: Node + Send + Sync {
 /// use async_trait::async_trait;
 /// use zenoh_flow::prelude::*;
 ///
+/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
+/// // the shared library.
+/// #[export_operator]
 /// struct NoOp {
 ///     input: Input,
 ///     output: Output,
@@ -288,9 +290,6 @@ pub trait Sink: Node + Send + Sync {
 ///     }
 /// }
 ///
-/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
-/// // the shared library.
-/// export_operator!(NoOp);
 /// ```
 #[async_trait]
 pub trait Operator: Node + Send + Sync {
