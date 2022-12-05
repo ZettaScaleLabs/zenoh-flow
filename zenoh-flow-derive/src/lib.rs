@@ -221,6 +221,8 @@ pub fn export_operator(_: TokenStream, input: TokenStream) -> TokenStream {
 
         #ast
 
+        #[doc(hidden)]
+        #[no_mangle]
         pub static _zf_export_operator: zenoh_flow::runtime::dataflow::loader::NodeDeclaration<
         zenoh_flow::runtime::dataflow::node::OperatorFn,
         > = zenoh_flow::runtime::dataflow::loader::NodeDeclaration::<
