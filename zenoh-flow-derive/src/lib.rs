@@ -19,7 +19,8 @@ use syn::{parse_macro_input, DeriveInput};
 /// The `ZFData` derive macro is provided to help the users
 /// in implementing the `DowncastAny` trait.
 ///
-/// Example::
+/// ## Example
+///
 /// ```no_compile
 /// use zenoh_flow_derive::ZFData;
 ///
@@ -48,12 +49,12 @@ pub fn zf_data_derive(input: TokenStream) -> TokenStream {
 /// The `export_source` attribute macro is provided to allow the users
 /// in exporting their source.
 ///
-/// Example::
+/// ## Example
+///
 /// ```no_compile
 /// use async_trait::async_trait;
 /// use std::sync::Arc;
 /// use zenoh_flow::prelude::*;
-/// use zenoh_flow::zenoh_flow_derive::ZFSource;
 ///
 /// #[export_source]
 /// pub struct MySource;
@@ -61,8 +62,8 @@ pub fn zf_data_derive(input: TokenStream) -> TokenStream {
 /// #[async_trait]
 /// impl Source for MySource{
 ///   async fn new(
-///       context: &mut Context,
-///       configuration: &Option<Configuration>,
+///       context: Context,
+///       configuration: Option<Configuration>,
 ///       outputs: Outputs,
 ///   ) -> Result<Self> {
 ///         todo!()
@@ -111,12 +112,12 @@ pub fn export_source(_: TokenStream, input: TokenStream) -> TokenStream {
 /// The `export_sink` attribute macro is provided to allow the users
 /// in exporting their sink.
 ///
-/// Example::
+/// ## Example
+///
 /// ```no_compile
 /// use async_trait::async_trait;
 /// use std::sync::Arc;
 /// use zenoh_flow::prelude::*;
-/// use zenoh_flow::zenoh_flow_derive::ZFSink;
 ///
 /// #[export_sink]
 /// pub struct MySink;
@@ -124,8 +125,8 @@ pub fn export_source(_: TokenStream, input: TokenStream) -> TokenStream {
 /// #[async_trait]
 /// impl Sink for MySink {
 ///   async fn new(
-///       context: &mut Context,
-///       configuration: &Option<Configuration>,
+///       context: Context,
+///       configuration: Option<Configuration>,
 ///       inputs: Inputs,
 ///   ) -> Result<Self> {
 ///         todo!()
@@ -180,12 +181,12 @@ pub fn export_sink(_: TokenStream, input: TokenStream) -> TokenStream {
 /// The `export_operator` attribute macro is provided to allow the users
 /// in exporting their operator.
 ///
-/// Example::
+/// ## Example
+///
 /// ```no_compile
 /// use async_trait::async_trait;
 /// use std::sync::Arc;
 /// use zenoh_flow::prelude::*;
-/// use zenoh_flow::zenoh_flow_derive::ZFOperator;
 ///
 /// #[export_operator]
 /// struct MyOperator;
@@ -193,11 +194,11 @@ pub fn export_sink(_: TokenStream, input: TokenStream) -> TokenStream {
 /// #[async_trait]
 /// impl Operator for MyOperator {
 ///     fn new(
-///         context: &mut Context,
-///         configuration: &Option<Configuration>,
+///         context: Context,
+///         configuration: Option<Configuration>,
 ///         inputs: Inputs,
 ///         outputs: Outputs,
-/// ) -> Result<Option<Self>>
+/// ) -> Result<Self>
 ///    where
 ///    Self: Sized {
 ///         todo!()
