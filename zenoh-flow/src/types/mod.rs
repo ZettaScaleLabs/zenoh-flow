@@ -12,8 +12,6 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-pub(crate) mod io;
-pub use io::*;
 pub(crate) mod message;
 pub use message::*;
 pub(crate) mod context;

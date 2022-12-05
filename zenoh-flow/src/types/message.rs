@@ -106,7 +106,7 @@ impl Payload {
     }
 }
 
-/// Creates a Data from an `Arc` of  typed data.
+/// Creates a Data from an `Arc` of typed data.
 /// The typed data has to be an instance of `ZFData`.
 impl<UT> From<Arc<UT>> for Payload
 where
@@ -157,10 +157,10 @@ impl<T: ZFData + 'static> From<Data<T>> for Payload {
     }
 }
 
-/// Zenoh-Flow data messages
+/// Zenoh-Flow data message.
 ///
-/// It contains the actual data, the timestamp associated,
-/// the end to end deadline, the end to end deadline misses and loop contexts.
+/// It contains the actual data, the timestamp associated, the end to end deadline, the end to end
+/// deadline misses and loop contexts.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DataMessage {
     pub(crate) data: Payload,
@@ -410,12 +410,18 @@ Feel free to contact us at < zenoh@zettascale.tech >.
 }
 
 impl<T: ZFData + 'static> Data<T> {
-    /// Try to create a new `Data<T>` based on a Payload.
+    /// Try to create a new [`Data<T>`](`Data`) based on a [`Payload`](`Payload`).
+    ///
+    /// Depending on the variant of [`Payload`](`Payload`) different steps are performed:
+    /// - if `Payload::Bytes` then Zenoh-Flow tries to deserialize to an instance of `T` (performing
+    ///   an allocation),
+    /// - if `Payload::Typed` then Zenoh-Flow checks that the underlying type matches `T` (relying
+    ///   on [`Any`](`Any`)).
     ///
     /// ## Errors
     ///
     /// An error will be returned if the Payload does not match `T`, i.e. if the deserialization or
-    /// the downcast failed — depending on the how the data was received.
+    /// the downcast failed.
     pub(crate) fn try_new(payload: Payload) -> Result<Self> {
         let mut typed = None;
 
@@ -440,8 +446,8 @@ impl<T: ZFData + 'static> Data<T> {
 
     /// Try to obtain the bytes representation of `T`.
     ///
-    /// Depending on how the Data was received, this method either tries to serialize it or simply
-    /// returns a slice.
+    /// Depending on how the [`Payload`](`Payload`) was received, this method either tries to
+    /// serialize it or simply returns a slice view.
     ///
     /// ## Errors
     ///
@@ -462,6 +468,8 @@ impl<T: ZFData + 'static> Data<T> {
     }
 }
 
+// Implementing `From<T>` allows us to accept instances of `T` in the signature of `send_async`
+// method as `T` will implement `impl Into<Data<T>>`.
 impl<T: ZFData + 'static> From<T> for Data<T> {
     fn from(data: T) -> Self {
         let payload = Payload::Typed(Arc::new(data));

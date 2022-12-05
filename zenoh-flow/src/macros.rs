@@ -73,7 +73,7 @@ macro_rules! export_source {
             core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
             constructor: |context: $crate::types::Context,
                           configuration: Option<$crate::types::Configuration>,
-                          outputs: $crate::types::Outputs| {
+                          outputs: $crate::io::Outputs| {
                 std::boxed::Box::pin(async {
                     let node = <$source>::new(context, configuration, outputs).await?;
                     Ok(std::sync::Arc::new(node) as std::sync::Arc<dyn $crate::traits::Node>)
@@ -132,8 +132,8 @@ macro_rules! export_operator {
             core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
             constructor: |context: $crate::types::Context,
                           configuration: Option<$crate::types::Configuration>,
-                          mut inputs: $crate::types::Inputs,
-                          mut outputs: $crate::types::Outputs| {
+                          mut inputs: $crate::io::Inputs,
+                          mut outputs: $crate::io::Outputs| {
                 std::boxed::Box::pin(async {
                     let node = <$operator>::new(context, configuration, inputs, outputs).await?;
                     Ok(std::sync::Arc::new(node) as std::sync::Arc<dyn $crate::traits::Node>)
@@ -190,7 +190,7 @@ macro_rules! export_sink {
             core_version: $crate::runtime::dataflow::loader::CORE_VERSION,
             constructor: |context: $crate::types::Context,
                           configuration: Option<$crate::types::Configuration>,
-                          mut inputs: $crate::types::Inputs| {
+                          mut inputs: $crate::io::Inputs| {
                 std::boxed::Box::pin(async {
                     let node = <$sink>::new(context, configuration, inputs).await?;
                     Ok(std::sync::Arc::new(node) as std::sync::Arc<dyn $crate::traits::Node>)

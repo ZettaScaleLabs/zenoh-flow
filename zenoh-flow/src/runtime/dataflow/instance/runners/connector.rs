@@ -12,9 +12,10 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
+use crate::io::{Inputs, Outputs};
 use crate::model::record::ZFConnectorRecord;
 use crate::traits::Node;
-use crate::types::{Inputs, LinkMessage, NodeId, Outputs};
+use crate::types::{LinkMessage, NodeId};
 use crate::zferror;
 use crate::zfresult::ErrorKind;
 use crate::Result as ZFResult;

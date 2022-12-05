@@ -17,13 +17,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use zenoh::prelude::r#async::*;
+use zenoh_flow::io::{Inputs, Outputs};
 use zenoh_flow::model::descriptor::{InputDescriptor, OutputDescriptor};
 use zenoh_flow::model::record::{OperatorRecord, PortRecord, SinkRecord, SourceRecord};
 use zenoh_flow::prelude::*;
 use zenoh_flow::runtime::dataflow::instance::DataFlowInstance;
 use zenoh_flow::runtime::dataflow::loader::{Loader, LoaderConfig};
 use zenoh_flow::runtime::RuntimeContext;
-use zenoh_flow::types::{Configuration, Context, Inputs, Message, Outputs};
+use zenoh_flow::types::{Configuration, Context, Message};
 
 static SOURCE: &str = "Counter";
 static DESTINATION: &str = "Counter";
