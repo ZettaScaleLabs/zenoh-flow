@@ -25,9 +25,11 @@ use std::fmt::Debug;
 ///
 /// This can be derived using the `#[derive(ZFData)]`
 ///
-/// Example::
+/// ## Example
+///
 /// ```no_run
-/// use zenoh_flow::zenoh_flow_derive::ZFData;
+/// use zenoh_flow::prelude::*;
+///
 /// #[derive(Debug, Clone, ZFData)]
 /// pub struct MyString(pub String);
 /// ```
@@ -44,9 +46,9 @@ pub trait DowncastAny {
 /// User types should implement this trait otherwise Zenoh Flow will
 /// not be able to handle the data, serialize and deserialize them when needed.
 ///
-/// Example:
+/// ## Example
+///
 /// ```no_run
-/// use zenoh_flow::zenoh_flow_derive::ZFData;
 /// use zenoh_flow::prelude::*;
 ///
 /// #[derive(Debug, Clone, ZFData)]
@@ -96,6 +98,9 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 /// ```no_run
 /// use zenoh_flow::prelude::*;
 ///
+/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
+/// // the shared library.
+/// #[export_source]
 /// pub struct MySource {
 ///     output: Output<usize>,
 ///     // The state could go in such structure.
@@ -129,10 +134,6 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///         Ok(())
 ///     }
 /// }
-///
-/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
-/// // the shared library.
-/// export_source!(MySource);
 /// ```
 #[async_trait]
 pub trait Source: Node + Send + Sync {
@@ -169,6 +170,9 @@ pub trait Source: Node + Send + Sync {
 /// use async_trait::async_trait;
 /// use zenoh_flow::prelude::*;
 ///
+/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
+/// // the shared library.
+/// #[export_sink]
 /// struct GenericSink {
 ///     input: Input<usize>,
 /// }
@@ -198,10 +202,6 @@ pub trait Source: Node + Send + Sync {
 ///         Ok(())
 ///     }
 /// }
-///
-/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
-/// // the shared library.
-/// export_sink!(GenericSink);
 /// ```
 #[async_trait]
 pub trait Sink: Node + Send + Sync {
@@ -232,12 +232,15 @@ pub trait Sink: Node + Send + Sync {
 /// A struct implementing the Operator trait typically needs to keep a reference to the `Input` and
 /// `Output` it needs.
 ///
-/// # Example
+/// ## Example
 ///
 /// ```no_run
 /// use async_trait::async_trait;
 /// use zenoh_flow::prelude::*;
 ///
+/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
+/// // the shared library.
+/// #[export_operator]
 /// struct NoOp {
 ///     input: Input<usize>,
 ///     output: Output<usize>,
@@ -268,10 +271,6 @@ pub trait Sink: Node + Send + Sync {
 ///         Ok(())
 ///     }
 /// }
-///
-/// // Use our provided macro to expose the symbol that Zenoh-Flow will look for when it will load
-/// // the shared library.
-/// export_operator!(NoOp);
 /// ```
 #[async_trait]
 pub trait Operator: Node + Send + Sync {
@@ -301,8 +300,8 @@ pub trait Operator: Node + Send + Sync {
 /// A struct implementing the Node trait typically needs to keep a reference to the `Input` and
 /// `Output` it needs.
 ///
-/// For usage examples see [`Operator`](`Operator`), [`Source`](`Source`) or [`Sink`](`Sink`) traits.
-/// ```
+/// For usage examples see: [`Operator`](`Operator`), [`Source`](`Source`) or [`Sink`](`Sink`)
+/// traits.
 #[async_trait]
 pub trait Node: Send + Sync {
     async fn iteration(&self) -> Result<()>;

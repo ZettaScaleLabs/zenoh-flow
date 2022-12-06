@@ -40,7 +40,6 @@ use const_format::formatcp;
 pub use ::zenoh_flow_derive;
 
 pub mod io;
-pub mod macros;
 pub mod model;
 pub mod runtime;
 pub mod traits;
@@ -55,11 +54,12 @@ pub use zfresult::{DaemonResult, ZFResult as Result};
 pub mod prelude {
     pub use crate::io::{Input, InputRaw, Inputs, Output, OutputRaw, Outputs};
     pub use crate::traits::{DowncastAny, Node, Operator, Sink, Source, ZFData};
-    pub use crate::types::{Configuration, Context, Message, NodeId, Payload, PortId, RuntimeId};
-    pub use crate::zenoh_flow_derive::ZFData;
+    pub use crate::types::{
+        Configuration, Context, Data, DataMessage, Message, NodeId, Payload, PortId, RuntimeId,
+    };
+    pub use crate::zenoh_flow_derive::{export_operator, export_sink, export_source, ZFData};
     pub use crate::zferror;
     pub use crate::zfresult::{Error, ErrorKind, ZFResult as Result};
-    pub use crate::{export_operator, export_sink, export_source};
 }
 
 /// Commit id of latest commit on Zenoh Flow
