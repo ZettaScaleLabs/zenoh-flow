@@ -12,7 +12,7 @@
 //   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
 //
 
-use crate::prelude::{ErrorKind, Payload, PortId, ZFData};
+use crate::prelude::{Data, ErrorKind, Payload, PortId, ZFData};
 use crate::types::LinkMessage;
 use crate::{zferror, Result};
 use flume::Sender;
@@ -151,12 +151,12 @@ impl OutputRaw {
         Ok(ts)
     }
 
-    // How we send on all the channels.
-    //
-    // We use [`join_all`](`futures::future::join_all`) to execute all the futures in parallel.
-    //
-    // NOTE: if a future returns an error the rest are not cancelled, we still try to send on the
-    // other channels.
+    /// How we send on all the channels.
+    ///
+    /// We use [`join_all`](`futures::future::join_all`) to execute all the futures in parallel.
+    ///
+    /// NOTE: if a future returns an error the rest are not cancelled, we still try to send on the
+    /// other channels.
     pub(crate) async fn send_to_all_async(&self, message: LinkMessage) -> Result<()> {
         // FIXME Feels like a cheap hack counting the number of errors. To improve.
         let mut err = false;
@@ -192,13 +192,14 @@ impl OutputRaw {
 
     /// Send, *asynchronously*, the `data` on all channels to the downstream Nodes.
     ///
-    /// If no `timestamp` is provided, the current timestamp — as per the [`HLC`](`HLC`) — is taken.
+    /// If no `timestamp` is provided, the current timestamp — as per the [`HLC`](`HLC`) used by the
+    /// Zenoh-Flow daemon running this Node — is taken.
     ///
     /// ## Errors
     ///
-    /// If an error occurs while sending the watermark on a channel, Zenoh-Flow will try to send it
-    /// on the remaining channels. For each failing channel, an error is logged and counted for. The
-    /// total number of encountered errors is returned.
+    /// If an error occurs while sending the watermark on a channel, Zenoh-Flow still tries to send
+    /// it on the remaining channels. For each failing channel, an error is logged and counted for.
+    /// The total number of encountered errors is returned.
     pub async fn send_async(&self, data: impl Into<Payload>, timestamp: Option<u64>) -> Result<()> {
         let ts = self.check_timestamp(timestamp)?;
         let message = LinkMessage::from_serdedata(data.into(), ts);
@@ -212,7 +213,8 @@ impl OutputRaw {
 
     /// Send, *asynchronously*, a [`Watermark`](`LinkMessage::Watermark`) on all channels.
     ///
-    /// If no timestamp is provided, the current timestamp — as per the [`HLC`](`HLC`) — is taken.
+    /// If no `timestamp` is provided, the current timestamp — as per the [`HLC`](`HLC`) used by the
+    /// Zenoh-Flow daemon running this Node — is taken.
     ///
     /// ## Watermarks
     ///
@@ -222,9 +224,9 @@ impl OutputRaw {
     ///
     /// ## Errors
     ///
-    /// If an error occurs while sending the watermark on a channel, Zenoh-Flow will try to send it
-    /// on the remaining channels. For each failing channel, an error is logged and counted for. The
-    /// total number of encountered errors is returned.
+    /// If an error occurs while sending the watermark on a channel, Zenoh-Flow still tries to send
+    /// it on the remaining channels. For each failing channel, an error is logged and counted for.
+    /// The total number of encountered errors is returned.
     pub async fn send_watermark_async(&self, timestamp: Option<u64>) -> Result<()> {
         let ts = self.check_timestamp(timestamp)?;
         self.last_watermark
@@ -239,14 +241,14 @@ impl OutputRaw {
 /// It's primary purpose is to ensure type guarantees: only types that implement `Into<T>` can be
 /// sent to downstream Nodes.
 #[derive(Clone)]
-pub struct Output<T: ZFData + 'static> {
+pub struct Output<T> {
     _phantom: PhantomData<T>,
     pub(crate) output_raw: OutputRaw,
 }
 
 // Dereferencing to the [`OutputRaw`](`OutputRaw`) allows to directly call methods on it with a
 // typed [`Output`](`Output`).
-impl<T: ZFData + 'static> Deref for Output<T> {
+impl<T> Deref for Output<T> {
     type Target = OutputRaw;
 
     fn deref(&self) -> &Self::Target {
@@ -257,20 +259,22 @@ impl<T: ZFData + 'static> Deref for Output<T> {
 impl<T: ZFData + 'static> Output<T> {
     /// Send, *asynchronously*, the provided `data` to all downstream Nodes.
     ///
-    /// If no `timestamp` is provided, the current timestamp — as per the [`HLC`](`HLC`) — is taken.
+    /// If no `timestamp` is provided, the current timestamp — as per the [`HLC`](`HLC`) used by the
+    /// Zenoh-Flow daemon running this Node — is taken.
+    ///
+    /// ## Constraint `Into<Data<T>>`
+    ///
+    /// Both `T` and `Data<T>` implement this constraint. Hence, in practice, any type that
+    /// implements `Into<T>` can be sent (provided that `Into::<T>::into(u)` is called first).
     ///
     /// ## Errors
     ///
-    /// If an error occurs while sending the message on a channel, we still try to send it on the
-    /// remaining channels. For each failing channel, an error is logged and counted for. The total
-    /// number of encountered errors is returned.
-    pub async fn send_async(
-        &self,
-        data: impl Into<Payload> + Into<T>,
-        timestamp: Option<u64>,
-    ) -> Result<()> {
+    /// If an error occurs while sending the message on a channel, Zenoh-Flow still tries to send it
+    /// on the remaining channels. For each failing channel, an error is logged and counted for. The
+    /// total number of encountered errors is returned.
+    pub async fn send_async(&self, data: impl Into<Data<T>>, timestamp: Option<u64>) -> Result<()> {
         let ts = self.check_timestamp(timestamp)?;
-        let message = LinkMessage::from_serdedata(Into::<Payload>::into(data), ts);
+        let message = LinkMessage::from_serdedata(Into::<Payload>::into(data.into()), ts);
         self.output_raw.send_to_all_async(message).await
     }
 }
