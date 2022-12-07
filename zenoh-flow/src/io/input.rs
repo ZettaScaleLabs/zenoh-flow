@@ -20,13 +20,12 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use uhlc::Timestamp;
 
-/// [`Inputs`](`Inputs`) contains all the receiving channels we created for a [`Sink`](`Sink`) or an
-/// [`Operator`](`Operator`).
+/// The [`Inputs`](`Inputs`) structure contains all the receiving channels we created for a
+/// [`Sink`](`Sink`) or an [`Operator`](`Operator`).
 ///
 /// To access these underlying channels, two methods are available:
 /// - `take`: this will return an `Input<T>` where `T` implements [`ZFData`](`ZFData`),
-/// - `take_raw`: this will return an [`InputRaw`](`InputRaw`) — i.e. Zenoh-Flow will not attempt to
-///   check or deserialize the data that was received.
+/// - `take_raw`: this will return an [`InputRaw`](`InputRaw`) — a type agnostic receiver.
 ///
 /// Choosing between `take` and `take_raw` is a trade-off between convenience and performance: an
 /// `Input<T>` conveniently receives instances of `T` and is thus less performant as Zenoh-Flow has
@@ -63,24 +62,17 @@ impl Inputs {
             .push(rx)
     }
 
-    /// Returns the typed [`Input`](`Input`) associated to the provided `port_id`, if one is
+    /// Returns the typed [`Input<T>`](`Input`) associated to the provided `port_id`, if one is
     /// associated, otherwise `None` is returned.
     ///
     /// ## Performance
     ///
-    /// With a typed [`Input`](`Input`), Zenoh-Flow will perform operations on the underlying data:
-    /// if the data are received serialized then Zenoh-Flow will deserialize them, if they are
+    /// With a typed [`Input<T>`](`Input`), Zenoh-Flow will perform operations on the underlying
+    /// data: if the data are received serialized then Zenoh-Flow will deserialize them, if they are
     /// received "typed" then Zenoh-Flow will check that the type matches what is expected.
     ///
-    /// These operations must be performed at the Node if the underlying data must be manipulated
-    /// and, in such scenario, do not represent an extra cost. However, if the underlying data is
-    /// not relevant then these additional operations can be avoided by calling `take_raw` and using
-    /// an [`InputRaw`](`InputRaw`) instead.
-    ///
-    /// ## Runtime errors
-    ///
-    /// Assuming there was a type mismatch, for instance `take::<u64>()` is called while `String`
-    /// are actually received, then calls to `recv_async` will return an error.
+    /// If the underlying data is not relevant then these additional operations can be avoided by
+    /// calling `take_raw` and using an [`InputRaw`](`InputRaw`) instead.
     pub fn take<T: ZFData>(&mut self, port_id: impl AsRef<str>) -> Option<Input<T>> {
         self.hmap.remove(port_id.as_ref()).map(|receivers| Input {
             _phantom: PhantomData,
@@ -116,8 +108,8 @@ impl Inputs {
 
 /// An [`InputRaw`](`InputRaw`) exposes the [`LinkMessage`](`LinkMessage`) it receives.
 ///
-/// It's primary purpose is to ensure optimal performance. This can be useful to implement behaviour
-/// where actual access to the underlying data is irrelevant.
+/// It's primary purpose is to ensure "optimal" performance. This can be useful to implement
+/// behaviour where actual access to the underlying data is irrelevant.
 #[derive(Clone, Debug)]
 pub struct InputRaw {
     pub(crate) port_id: PortId,
@@ -157,6 +149,8 @@ pub struct Input<T: ZFData + 'static> {
     pub(crate) input_raw: InputRaw,
 }
 
+// Dereferencing to the [`InputRaw`](`InputRaw`) allows to directly call methods on it with a typed
+// [`Input`](`Input`).
 impl<T: ZFData + 'static> Deref for Input<T> {
     type Target = InputRaw;
 

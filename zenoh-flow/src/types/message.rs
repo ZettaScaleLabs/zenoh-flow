@@ -352,7 +352,7 @@ pub enum Message<T: ZFData> {
 ///
 /// When deserializing, an allocation is performed.
 #[derive(Debug)]
-pub struct Data<T: ZFData> {
+pub struct Data<T> {
     payload: Payload,
     bytes: Option<Vec<u8>>,
     // CAVEAT: Setting the value **typed** to `None` when it was already set to `Some` can cause a
