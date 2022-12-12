@@ -130,7 +130,7 @@ pub trait ZFData: DowncastAny + Debug + Send + Sync {
 ///         // interacting with I/O devices. We mimick an asynchronous iteraction with a sleep.
 ///         async_std::task::sleep(std::time::Duration::from_secs(1)).await;
 ///
-///         // self.output.send_async(10usize, None).await?;
+///         // self.output.send(10usize, None).await?;
 ///         Ok(())
 ///     }
 /// }
@@ -193,7 +193,7 @@ pub trait Source: Node + Send + Sync {
 /// #[async_trait]
 /// impl Node for GenericSink {
 ///     async fn iteration(&self) -> Result<()> {
-///         let (message, _timestamp) = self.input.recv_async().await?;
+///         let (message, _timestamp) = self.input.recv().await?;
 ///         match message {
 ///             Message::Data(t) => println!("{}", *t),
 ///             Message::Watermark => println!("Watermark"),
@@ -263,9 +263,9 @@ pub trait Sink: Node + Send + Sync {
 /// #[async_trait]
 /// impl Node for NoOp {
 ///     async fn iteration(&self) -> Result<()> {
-///         let (message, _timestamp) = self.input.recv_async().await?;
+///         let (message, _timestamp) = self.input.recv().await?;
 ///         match message {
-///             Message::Data(t) => self.output.send_async(*t, None).await?,
+///             Message::Data(t) => self.output.send(*t, None).await?,
 ///             Message::Watermark => println!("Watermark"),
 ///         }
 ///         Ok(())

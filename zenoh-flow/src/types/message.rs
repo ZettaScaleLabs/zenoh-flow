@@ -157,6 +157,12 @@ impl<T: ZFData + 'static> From<Data<T>> for Payload {
     }
 }
 
+impl From<DataMessage> for Payload {
+    fn from(data_message: DataMessage) -> Self {
+        data_message.data
+    }
+}
+
 /// Zenoh-Flow data message.
 ///
 /// It contains the actual data, the timestamp associated, the end to end deadline, the end to end
@@ -256,7 +262,6 @@ pub enum ControlMessage {
 /// The Zenoh-Flow message that is sent across `Link` and across Zenoh.
 ///
 /// It contains either a [`DataMessage`](`DataMessage`) or a [`Watermark`](`Watermark`).
-#[non_exhaustive]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LinkMessage {
     Data(DataMessage),
@@ -334,10 +339,10 @@ impl PartialEq for LinkMessage {
 
 impl Eq for LinkMessage {}
 
-/// A `Message<T>` is what is received on an `Input<T>`, typically after a call to `recv_async` or
+/// A `Message<T>` is what is received on an `Input<T>`, typically after a call to `try_recv` or
 /// `recv`.
 ///
-/// A `Message<T>` can either contain _Data_, `Data<T>` or signal a _Watermark_.
+/// A `Message<T>` can either contain [`Data<T>`](`Data`), or signal a _Watermark_.
 pub enum Message<T: ZFData> {
     Data(Data<T>),
     Watermark,
@@ -468,13 +473,23 @@ impl<T: ZFData + 'static> Data<T> {
     }
 }
 
-// Implementing `From<T>` allows us to accept instances of `T` in the signature of `send_async`
-// method as `T` will implement `impl Into<Data<T>>`.
+// Implementing `From<T>` allows us to accept instances of `T` in the signature of `send` and
+// `try_send` methods as `T` will implement `impl Into<Data<T>>`.
 impl<T: ZFData + 'static> From<T> for Data<T> {
     fn from(data: T) -> Self {
         let payload = Payload::Typed(Arc::new(data));
         Self {
             payload,
+            bytes: None,
+            typed: None,
+        }
+    }
+}
+
+impl<T: ZFData + 'static> From<DataMessage> for Data<T> {
+    fn from(value: DataMessage) -> Self {
+        Self {
+            payload: value.data,
             bytes: None,
             typed: None,
         }

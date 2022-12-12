@@ -151,19 +151,105 @@ impl OutputRaw {
         Ok(ts)
     }
 
-    /// How we send on all the channels.
+    /// Attempt to forward, *synchronously*, the message to the downstream Nodes.
     ///
-    /// We use [`join_all`](`futures::future::join_all`) to execute all the futures in parallel.
+    /// ## Asynchronous alternative: `forward`
     ///
-    /// NOTE: if a future returns an error the rest are not cancelled, we still try to send on the
-    /// other channels.
-    pub(crate) async fn send_to_all_async(&self, message: LinkMessage) -> Result<()> {
+    /// This method is a synchronous fail-fast alternative to it's asynchronous counterpart:
+    /// `forward`. Hence, although synchronous, this method will not block the thread on which it is
+    /// executed.
+    ///
+    /// ## Errors
+    ///
+    /// If an error occurs while sending the message on a channel, Zenoh-Flow still tries to send it
+    /// on the remaining channels. For each failing channel, an error is logged.
+    pub(crate) fn try_forward(&self, message: LinkMessage) -> Result<()> {
+        let mut err_count = 0;
+        self.senders.iter().for_each(|sender| {
+            if let Err(e) = sender.try_send(message.clone()) {
+                err_count += 1;
+                match e {
+                    flume::TrySendError::Full(_) => {
+                        log::error!("[Output: {}] A channel is full", self.port_id)
+                    }
+                    flume::TrySendError::Disconnected(_) => {
+                        log::error!("[Output: {}] A channel is disconnected", self.port_id)
+                    }
+                }
+            }
+        });
+
+        if err_count > 0 {
+            return Err(zferror!(
+                ErrorKind::SendError,
+                "[Output: {}] Encountered {} errors while sending (async) data",
+                self.port_id,
+                err_count
+            )
+            .into());
+        }
+
+        Ok(())
+    }
+
+    /// Attempt to send, synchronously, the `data` on all channels to the downstream Nodes.
+    ///
+    /// If no `timestamp` is provided, the current timestamp — as per the [`HLC`](`HLC`) used by the
+    /// Zenoh-Flow daemon running this Node — is taken.
+    ///
+    /// ## Asynchronous alternative: `send`
+    ///
+    /// This method is a synchronous fail-fast alternative to its asynchronous counterpart: `send`.
+    /// Hence, although synchronous, this method will not block the thread on which it is executed.
+    ///
+    /// ## Errors
+    ///
+    /// If an error occurs while sending the watermark on a channel, Zenoh-Flow still tries to send
+    /// it on the remaining channels. For each failing channel, an error is logged and counted for.
+    pub fn try_send(&self, data: impl Into<Payload>, timestamp: Option<u64>) -> Result<()> {
+        let ts = self.check_timestamp(timestamp)?;
+        let message = LinkMessage::from_serdedata(data.into(), ts);
+
+        self.try_forward(message)
+    }
+
+    /// Attempt to send, *synchronously*, the watermark on all channels to the downstream Nodes.
+    ///
+    /// If no `timestamp` is provided, the current timestamp — as per the [`HLC`](`HLC`) used by the
+    /// Zenoh-Flow daemon running this Node — is taken.
+    ///
+    /// ## Asynchronous alternative: `send_watermark`
+    ///
+    /// This method is a synchronous fail-fast alternative to it's asynchronous counterpart: `send`.
+    /// Although synchronous, this method will not block the thread on which it is executed.
+    ///
+    /// ## Errors
+    ///
+    /// If an error occurs while sending the watermark on a channel, Zenoh-Flow still tries to send
+    /// it on the remaining channels. For each failing channel, an error is logged and counted for.
+    pub fn try_send_watermark(&self, timestamp: Option<u64>) -> Result<()> {
+        let ts = self.check_timestamp(timestamp)?;
+        self.last_watermark
+            .store(ts.get_time().0, Ordering::Relaxed);
+        let message = LinkMessage::Watermark(ts);
+        self.try_forward(message)
+    }
+
+    /// Forward, *asynchronously*, the [`LinkMessage`](`LinkMessage`) on all channels to the
+    /// downstream Nodes.
+    ///
+    /// ## Errors
+    ///
+    /// If an error occurs while sending the message on a channel, Zenoh-Flow still tries to send
+    /// it on the remaining channels. For each failing channel, an error is logged and counted for.
+    pub async fn forward(&self, message: LinkMessage) -> Result<()> {
         // FIXME Feels like a cheap hack counting the number of errors. To improve.
-        let mut err = false;
+        let mut err = 0;
         let fut_senders = self
             .senders
             .iter()
             .map(|sender| sender.send_async(message.clone()));
+        // [`join_all`](`futures::future::join_all`) executes all futures in parallel.
         let res = futures::future::join_all(fut_senders).await;
 
         res.iter().for_each(|res| {
@@ -173,14 +259,14 @@ impl OutputRaw {
                     self.port_id(),
                     e
                 );
-                err = true;
+                err += 1;
             }
         });
 
-        if err {
+        if err > 0 {
             return Err(zferror!(
                 ErrorKind::SendError,
-                "[Output: {}] Encountered {} errors while async sending (or trying to)",
+                "[Output: {}] Encountered {} errors while sending (async) data",
                 self.port_id,
                 err
             )
@@ -199,16 +285,11 @@ impl OutputRaw {
     ///
     /// If an error occurs while sending the watermark on a channel, Zenoh-Flow still tries to send
     /// it on the remaining channels. For each failing channel, an error is logged and counted for.
-    /// The total number of encountered errors is returned.
-    pub async fn send_async(&self, data: impl Into<Payload>, timestamp: Option<u64>) -> Result<()> {
+    pub async fn send(&self, data: impl Into<Payload>, timestamp: Option<u64>) -> Result<()> {
         let ts = self.check_timestamp(timestamp)?;
         let message = LinkMessage::from_serdedata(data.into(), ts);
 
-        self.send_to_all_async(message).await
-    }
-
-    pub async fn forward(&self, message: LinkMessage) -> Result<()> {
-        self.send_to_all_async(message).await
+        self.forward(message).await
     }
 
     /// Send, *asynchronously*, a [`Watermark`](`LinkMessage::Watermark`) on all channels.
@@ -226,13 +307,12 @@ impl OutputRaw {
     ///
     /// If an error occurs while sending the watermark on a channel, Zenoh-Flow still tries to send
     /// it on the remaining channels. For each failing channel, an error is logged and counted for.
-    /// The total number of encountered errors is returned.
-    pub async fn send_watermark_async(&self, timestamp: Option<u64>) -> Result<()> {
+    pub async fn send_watermark(&self, timestamp: Option<u64>) -> Result<()> {
         let ts = self.check_timestamp(timestamp)?;
         self.last_watermark
             .store(ts.get_time().0, Ordering::Relaxed);
         let message = LinkMessage::Watermark(ts);
-        self.send_to_all_async(message).await
+        self.forward(message).await
     }
 }
 
@@ -272,9 +352,30 @@ impl<T: ZFData + 'static> Output<T> {
     /// If an error occurs while sending the message on a channel, Zenoh-Flow still tries to send it
     /// on the remaining channels. For each failing channel, an error is logged and counted for. The
     /// total number of encountered errors is returned.
-    pub async fn send_async(&self, data: impl Into<Data<T>>, timestamp: Option<u64>) -> Result<()> {
+    pub async fn send(&self, data: impl Into<Data<T>>, timestamp: Option<u64>) -> Result<()> {
         let ts = self.check_timestamp(timestamp)?;
         let message = LinkMessage::from_serdedata(Into::<Payload>::into(data.into()), ts);
-        self.output_raw.send_to_all_async(message).await
+        self.output_raw.forward(message).await
+    }
+
+    /// Tries to send the provided `data` to all downstream Nodes.
+    ///
+    /// If no `timestamp` is provided, the current timestamp — as per the [`HLC`](`HLC`) used by the
+    /// Zenoh-Flow daemon running this Node — is taken.
+    ///
+    /// ## Constraint `Into<Data<T>>`
+    ///
+    /// Both `T` and `Data<T>` implement this constraint. Hence, in practice, any type that
+    /// implements `Into<T>` can be sent (provided that `Into::<T>::into(u)` is called first).
+    ///
+    /// ## Errors
+    ///
+    /// If an error occurs while sending the message on a channel, Zenoh-Flow still tries to send it
+    /// on the remaining channels. For each failing channel, an error is logged and counted for. The
+    /// total number of encountered errors is returned.
+    pub fn try_send(&self, data: impl Into<Data<T>>, timestamp: Option<u64>) -> Result<()> {
+        let ts = self.check_timestamp(timestamp)?;
+        let message = LinkMessage::from_serdedata(Into::<Payload>::into(data.into()), ts);
+        self.output_raw.try_forward(message)
     }
 }

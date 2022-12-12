@@ -14,7 +14,8 @@
 
 use crate::prelude::{ErrorKind, Message, PortId, ZFData};
 use crate::types::{Data, DataMessage, LinkMessage};
-use crate::{zferror, Result};
+use crate::{bail, Result};
+use flume::TryRecvError;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -30,8 +31,9 @@ use uhlc::Timestamp;
 /// Choosing between `take` and `take_raw` is a trade-off between convenience and performance: an
 /// `Input<T>` conveniently receives instances of `T` and is thus less performant as Zenoh-Flow has
 /// to manipulate the data; an `InputRaw` is more performant but all the manipulation must be
-/// performed in the code of the Node. An `InputRaw` can be leveraged, for instance, for
-/// load-balancing or rate-limiting.
+/// performed in the code of the Node. An `InputRaw` is currently leveraged by the bindings in other
+/// programming languages — as they cannot understand the types coming from Rust — but can also be
+/// leveraged, for instance, for load-balancing or rate-limiting.
 pub struct Inputs {
     pub(crate) hmap: HashMap<PortId, Vec<flume::Receiver<LinkMessage>>>,
 }
@@ -126,6 +128,35 @@ impl InputRaw {
         self.receivers.len()
     }
 
+    /// Returns the first [`LinkMessage`](`LinkMessage`) that was received on any of the channels
+    /// associated with this Input, or an `Empty` error if there were no messages.
+    ///
+    /// ## Asynchronous alternative: `recv`
+    ///
+    /// This method is a synchronous fail-fast alternative to it's asynchronous counterpart: `recv`.
+    /// Although synchronous, but given it is "fail-fast", this method will not block the thread on
+    /// which it is executed.
+    ///
+    /// ## Error
+    ///
+    /// If no message was received, an `Empty` error is returned. Note that if some channels are
+    /// disconnected, for each of such channel an error is logged.
+    pub fn try_recv(&self) -> Result<LinkMessage> {
+        for receiver in &self.receivers {
+            match receiver.try_recv() {
+                Ok(message) => return Ok(message),
+                Err(e) => {
+                    if matches!(e, TryRecvError::Disconnected) {
+                        log::error!("[Input: {}] A channel is disconnected", self.port_id);
+                    }
+                }
+            }
+        }
+
+        // We went through all channels, no message, Empty error.
+        bail!(ErrorKind::Empty, "[Input: {}] No message", self.port_id)
+    }
+
     /// Returns the first [`LinkMessage`](`LinkMessage`) that was received, *asynchronously*, on any
     /// of the channels associated with this Input.
     ///
@@ -134,12 +165,33 @@ impl InputRaw {
     ///
     /// ## Error
     ///
-    /// If an error occurs on one of the channels, this error is returned.
-    pub async fn recv_async(&self) -> Result<LinkMessage> {
-        let recv_futures = self.receivers.iter().map(|link| link.recv_async());
+    /// An error is returned if *all* channels are disconnected. For each disconnected channel, an
+    /// error is separately logged.
+    pub async fn recv(&self) -> Result<LinkMessage> {
+        let mut recv_futures = self
+            .receivers
+            .iter()
+            .map(|link| link.recv_async())
+            .collect::<Vec<_>>();
 
-        let (res, _, _) = futures::future::select_all(recv_futures).await;
-        res.map_err(|e| zferror!(ErrorKind::IOError, e).into())
+        loop {
+            let (res, _, remaining) = futures::future::select_all(recv_futures).await;
+            match res {
+                Ok(message) => return Ok(message),
+                Err(_disconnected) => {
+                    log::error!("[Input: {}] A channel is disconnected", self.port_id);
+                    if remaining.is_empty() {
+                        bail!(
+                            ErrorKind::Disconnected,
+                            "[Input: {}] All channels are disconnected",
+                            self.port_id
+                        );
+                    }
+
+                    recv_futures = remaining;
+                }
+            }
+        }
     }
 }
 
@@ -160,31 +212,57 @@ impl<T: ZFData + 'static> Deref for Input<T> {
 }
 
 impl<T: ZFData + 'static> Input<T> {
-    /// Returns the first [`Message`](`Message`) that was received, *asynchronously*, on any of the
-    /// channels associated with this Input.
+    /// Returns the first [`Message<T>`](`Message`) that was received, *asynchronously*, on any of
+    /// the channels associated with this Input.
     ///
-    /// If several [`Message`](`Message`) are received at the same time, one is *randomly* selected.
+    /// If several [`Message<T>`](`Message`) are received at the same time, one is *randomly*
+    /// selected.
     ///
-    /// This method interprets the data to the type associated with this [`Input`](`Input`).
+    /// This method interprets the data to the type associated with this [`Input<T>`](`Input`).
     ///
     /// ## Performance
     ///
     /// As this method interprets the data received additional operations are performed:
     /// - data received serialized is deserialized (an allocation is performed to store an instance
     ///   of `T`),
-    /// - data received "typed" are checked against the type associated to this [`Input`](`Input`).
+    /// - data received "typed" are checked against the type associated to this
+    ///   [`Input<T>`](`Input`).
     ///
     /// ## Error
     ///
     /// Several errors can occur:
-    /// - one of the channels can return an error (e.g. a disconnection),
+    /// - all the channels are disconnected,
     /// - Zenoh-Flow failed at interpreting the received data as an instance of `T`.
-    pub async fn recv_async(&self) -> Result<(Message<T>, Timestamp)> {
-        match self.input_raw.recv_async().await? {
+    pub async fn recv(&self) -> Result<(Message<T>, Timestamp)> {
+        match self.input_raw.recv().await? {
             LinkMessage::Data(DataMessage { data, timestamp }) => {
                 Ok((Message::Data(Data::try_new(data)?), timestamp))
             }
             LinkMessage::Watermark(timestamp) => Ok((Message::Watermark, timestamp)),
+        }
+    }
+
+    /// Returns the first [`Message<T>`](`Message`) that was received on any of the channels
+    /// associated with this Input, or `None` if all the channels are empty.
+    ///
+    /// ## Asynchronous alternative: `recv`
+    ///
+    /// This method is a synchronous fail-fast alternative to it's asynchronous counterpart: `recv`.
+    /// Although synchronous, this method will not block the thread on which it is executed.
+    ///
+    /// ## Error
+    ///
+    /// Several errors can occur:
+    /// - no message was received (i.e. Empty error),
+    /// - Zenoh-Flow failed at interpreting the received data as an instance of `T`.
+    ///
+    /// Note that if some channels are disconnected, for each of such channel an error is logged.
+    pub fn try_recv(&self) -> Result<(Message<T>, Timestamp)> {
+        match self.input_raw.try_recv()? {
+            LinkMessage::Data(DataMessage { data, timestamp }) => {
+                Ok((Message::Data(Data::try_new(data)?), timestamp))
+            }
+            LinkMessage::Watermark(ts) => Ok((Message::Watermark, ts)),
         }
     }
 }

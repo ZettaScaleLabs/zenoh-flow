@@ -265,8 +265,9 @@ impl DataFlowInstance {
                             &connector_id
                         )
                     })?;
-                    Arc::new(ZenohReceiver::new(connector_record, session, outputs).await?)
-                        as Arc<dyn Node>
+                    Arc::new(
+                        ZenohReceiver::new(connector_record, session, hlc.clone(), outputs).await?,
+                    ) as Arc<dyn Node>
                 }
             };
 
