@@ -89,7 +89,7 @@ jobs:
               ;;
             *alpine*)
               apk update
-              apk add git curl build-base libressl-dev
+              apk add git curl build-base libressl-dev bash
               ;;
           esac
 
