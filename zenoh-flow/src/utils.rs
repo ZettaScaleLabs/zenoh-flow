@@ -43,6 +43,9 @@ pub(crate) fn try_make_file_path(url_str: &str) -> Result<PathBuf> {
     let mut path = PathBuf::new();
     #[cfg(test)]
     {
+        // When running the test on the CI we cannot know the path of the clone of Zenoh-Flow. By
+        // using relative paths (w.r.t. the manifest dir) in the tests and, only in tests, prepend
+        // the paths with this environment variable we obtain a correct absolute path.
         path.push(env!("CARGO_MANIFEST_DIR"));
     }
 
