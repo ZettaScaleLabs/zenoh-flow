@@ -80,4 +80,4 @@ zfctl = { path = "/usr/bin/zfctl" }
 
 
 [package.metadata.rpm.files]
-"../.config/zfctl-zenoh.json" = { path = "~/.config/zenoh-flow/zfctl-zenoh.json", mode = "644" }
+"../.config/zfctl-zenoh.json" = { path = "/etc/zenoh-flow/zfctl-zenoh.json", mode = "644" }
