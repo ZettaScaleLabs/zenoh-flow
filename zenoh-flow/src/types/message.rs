@@ -261,7 +261,7 @@ pub enum ControlMessage {
 
 /// The Zenoh-Flow message that is sent across `Link` and across Zenoh.
 ///
-/// It contains either a [`DataMessage`](`DataMessage`) or a [`Watermark`](`Watermark`).
+/// It contains either a [`DataMessage`](`DataMessage`) or a [`Watermark`](`uhlc::Timestamp`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LinkMessage {
     Data(DataMessage),
